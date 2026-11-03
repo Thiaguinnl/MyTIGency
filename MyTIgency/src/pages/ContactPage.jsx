@@ -10,9 +10,9 @@ import { markPageReady } from '../utils/pageTransition'
 export default function ContactPage() {
   useEffect(() => {
     Promise.all([
-      document.fonts.load('400 132px "Roslindale Display Condensed"'),
+      document.fonts.load('400 132px "Instrument Serif"'), // título, "Ou só bater um papo.", linha ao lado
       document.fonts.load('400 15px "JetBrains Mono"'),
-      document.fonts.load('400 30px "Roslindale Display Narrow"'),
+      document.fonts.load('400 24px Fraunces'), // campos e pílulas
     ]).catch(() => {}).then(() => document.fonts.ready).then(markPageReady)
   }, [])
 

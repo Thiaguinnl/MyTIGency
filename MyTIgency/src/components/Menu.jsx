@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useLenis } from 'lenis/react'
 import { useLanguage } from '../context/LanguageContext'
@@ -8,6 +9,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { DecodeText } from './DecodeText'
 import { hasSkipGo, skipGo } from '../utils/manifestoSkip'
+import { scrollToTop, scrollSmooth, switchLang, curtainTo, originOf } from '../utils/pageTransition'
 
 const CLOSE_ON_SCROLL_PX = 24
 
@@ -20,28 +22,36 @@ export function Menu({ open, onClose, triggerRef, activeId, isContact = false })
 
   // Hero is permanently position:fixed (see useHeroMarqueeReveal), so a
   // native #top jump would be a no-op — scroll to the real document top.
+  // Idioma: na home a troca remonta o Manifesto, então acontece por baixo da
+  // cortina (utils/pageTransition.js → switchLang), nascendo do botão clicado
+  const pickLang = (e, next) => {
+    if (next === lang) return
+    let { clientX: x, clientY: y } = e
+    if (!x && !y) { // teclado: a cortina nasce do próprio botão
+      const r = e.currentTarget.getBoundingClientRect()
+      x = r.left + r.width / 2
+      y = r.top + r.height / 2
+    }
+    switchLang(next, () => flushSync(() => setLang(next)), x, y)
+  }
+
+  // Trocar de seção é pela cortina de dither (utils/pageTransition.js), nascendo do
+  // link; na seção em que a pessoa já está, só rola. Work: o destino é o cartaz do
+  // Manifesto (utils/manifestoSkip.js)
   const handleSectionClick = (e, sectionId) => {
     onClose()
     // Fora da home os links são navegação normal entre páginas
     if (isContact) return
-    if (sectionId === 'top') {
-      e.preventDefault()
-      e.stopPropagation()
-      lenis?.scrollTo(0)
-    }
-    // Work: o destino é o cartaz do Manifesto (utils/manifestoSkip.js) — longe,
-    // o portal nasce do link; perto, só rola
-    if (sectionId === 'trabalhos' && hasSkipGo()) {
-      e.preventDefault()
-      e.stopPropagation()
-      let { clientX: x, clientY: y } = e
-      if (!x && !y) { // teclado: o portal nasce do próprio link
-        const r = e.currentTarget.getBoundingClientRect()
-        x = r.left + r.width / 2
-        y = r.top + r.height / 2
-      }
-      skipGo('work', [x, y])
-    }
+    e.preventDefault()
+    e.stopPropagation()
+    const origin = originOf(e)
+    const toWork = sectionId === 'trabalhos' && hasSkipGo()
+    if (sectionId !== activeId) {
+      if (toWork) skipGo('skip', origin)
+      else curtainTo(sectionId, origin)
+    } else if (sectionId === 'top') scrollToTop()
+    else if (toWork) skipGo('work', origin)
+    else if (sectionId === 'carreiras') scrollSmooth(document.documentElement.scrollHeight - window.innerHeight)
   }
 
   useClickOutside(panelRef, onClose, open && !isMobile, triggerRef)
@@ -114,7 +124,7 @@ export function Menu({ open, onClose, triggerRef, activeId, isContact = false })
               type="button"
               className={lang === 'pt' ? 'active' : ''}
               aria-pressed={lang === 'pt'}
-              onClick={() => setLang('pt')}
+              onClick={(e) => pickLang(e, 'pt')}
             >
               PT
             </button>
@@ -123,7 +133,7 @@ export function Menu({ open, onClose, triggerRef, activeId, isContact = false })
               type="button"
               className={lang === 'en' ? 'active' : ''}
               aria-pressed={lang === 'en'}
-              onClick={() => setLang('en')}
+              onClick={(e) => pickLang(e, 'en')}
             >
               EN
             </button>

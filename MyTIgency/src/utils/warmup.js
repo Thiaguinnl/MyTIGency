@@ -5,10 +5,15 @@
 // página, para que esse custo não caia no meio do scroll.
 
 const pending = new Set()
+// Teto por tarefa: uma que nunca termina não pode prender o gate desta visita nem o
+// das próximas (pending é do módulo e sobrevive à troca de página). Acontece: o
+// compileAsync do three fica pendente para sempre se o material é descartado no meio
+// (sair da home cedo, StrictMode no dev). A tarefa segue rodando; só não é esperada.
+const TASK_MAX_MS = 6000
 
-/** Registra um aquecimento; uma falha não trava o gate (só deixa de esperar). */
+/** Registra um aquecimento; uma falha (ou o teto) não trava o gate, só deixa de esperar. */
 export function warmup(task) {
-  const p = Promise.resolve(task).catch(() => {})
+  const p = Promise.race([task, new Promise((r) => setTimeout(r, TASK_MAX_MS))]).catch(() => {})
   pending.add(p)
   p.then(() => pending.delete(p))
   return p

@@ -117,7 +117,7 @@ export function useHeroMarqueeReveal() {
         const reach = header.offsetHeight + base // de onde a marquee "encosta" no header
         const marqueeTop = (heroH - peek()) * (1 - self.progress)
         const t = Math.min(1, Math.max(0, (reach - marqueeTop) / reach))
-        document.documentElement.style.setProperty('--dock-t', t.toFixed(4))
+        header.style.setProperty('--dock-t', t.toFixed(4)) // (no header, não no <html>: herdada pela página inteira, recalculava o estilo de tudo a cada quadro)
       }
 
       triggerRef.current = ScrollTrigger.create({
@@ -140,7 +140,7 @@ export function useHeroMarqueeReveal() {
       ctx.revert()
       triggerRef.current = null
       document.documentElement.classList.remove('marquee-docked')
-      document.documentElement.style.removeProperty('--dock-t')
+      document.querySelector('header')?.style.removeProperty('--dock-t')
       hero.classList.remove('hero--pinned', 'hero--hidden')
       spacer.classList.remove('reveal-spacer--active')
       marquee.classList.remove('marquee--reveal')

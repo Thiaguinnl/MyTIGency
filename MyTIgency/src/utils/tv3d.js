@@ -542,6 +542,10 @@ export function mountDitherTV(canvas, {
     post.dispose()
     postQuad.geometry.dispose()
     renderer.dispose()
+    // só dispose deixava o contexto vivo: 1 a mais a cada volta do contato (o Chrome
+    // derruba a partir de ~16). O canvas é do React: só perde o contexto se saiu da
+    // página — o StrictMode do dev remonta no mesmo canvas, e o contexto perdido voltaria
+    if (!canvas.isConnected) renderer.forceContextLoss()
   }
 
   const setTurn = (offset) => { turnTarget = offset; if (!hasTurn) { lastTurnTarget = offset; hasTurn = true } }

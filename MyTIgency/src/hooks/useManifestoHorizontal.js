@@ -13,8 +13,7 @@ import { mountS6 } from '../utils/manifestoS6'
 import { mountPC, pcLength, pcCartaz, pcTravelAt } from '../utils/manifestoPC'
 import { warmup } from '../utils/warmup'
 import { setSkip, setSkipGo, markManifestoSeen } from '../utils/manifestoSkip'
-import { runPortal } from '../utils/manifestoPortal'
-import { scrollNow, scrollSmooth } from '../utils/pageTransition'
+import { scrollNow, scrollSmooth, curtain, finishScrubs } from '../utils/pageTransition'
 import { strings } from '../i18n/strings'
 import { EDITOR_CELL } from '../utils/ditherSprite'
 
@@ -138,16 +137,9 @@ const curve = (a, ...r) => `M${a}` + r.map((p, i) => (i % 3 ? ' ' : 'C') + p).jo
 // do traço A, pega-a e, como caneta, desenha o resto do traço (a mesma arte,
 // deformada) até o vão entre as palavras da seção 3, onde assenta em 3/4.
 
-// o salto do botão de pular: as suavizações (scrub) de todos os gatilhos vão direto
-// ao destino, para nada da sequência tocar depois que o portal abre
-// (getTween devolve a animação do scrub — ou nada, ou algo sem progress, nos outros)
+// o salto do botão de pular: depois do scroll, finishScrubs (pageTransition) fecha as
+// suavizações no destino, para nada da sequência tocar quando a cortina abre
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-function finishScrubs() {
-  ScrollTrigger.getAll().forEach((t) => {
-    const tw = t.getTween?.()
-    if (tw && typeof tw.progress === 'function') tw.progress(1)
-  })
-}
 export function useManifestoHorizontal(rootRef, lang) {
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -224,14 +216,18 @@ export function useManifestoHorizontal(rootRef, lang) {
     // o cursor (e a seção 3) só montam quando a seção 2 chega perto
     let near = false
     const nearWaiters = []
-    const io = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) return
+    const io = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) goNear() }, { rootMargin: '100% 0px' })
+    io.observe(ms2)
+    // (também chamado pelo pin: quem chega já dentro dele — salto, âncora, remontagem
+    // pela troca de idioma — não vê a seção 2 entrar, ela está deslocada de lado)
+    function goNear() {
+      if (near) return
       near = true
       io.disconnect()
-      nearWaiters.splice(0).forEach((fn) => fn())
-    }, { rootMargin: '100% 0px' })
-    io.observe(ms2)
-    const whenNear = (fn) => (near ? fn() : nearWaiters.push(fn))
+      nearWaiters.splice(0).forEach((fn) => warmup(fn()))
+    }
+    // (como aquecimento: a cortina da troca de idioma espera o cursor montar e remedir)
+    const whenNear = (fn) => (near ? warmup(fn()) : nearWaiters.push(fn))
 
     const mm = gsap.matchMedia()
 
@@ -356,7 +352,7 @@ export function useManifestoHorizontal(rootRef, lang) {
         pc.measure({ vw, vh, top: chromeBottom() })
       }
       // A transição do PC só começa quando a seção 6 termina o roteiro: rolando rápido,
-      // o freio dela (PACE) ainda tocava "apresentar" e o texto indo para o cartaz quando
+      // o freio dela (PACE) ainda tocava o fim (o texto indo para o cartaz) quando
       // o scroll já entrava no PC, e os dois efeitos se somavam. Até lá o PC fica no
       // início (o cartaz parado, idêntico ao fim da 6); depois alcança o scroll rápido,
       // sem salto (PC_CATCH alturas de tela/s). Voltando, segue o scroll na hora; chegando
@@ -385,6 +381,7 @@ export function useManifestoHorizontal(rootRef, lang) {
         else next = dt ? Math.min(pcTarget, pcShown + PC_CATCH * dt) : pcShown
         if (next !== pcShown) { pcShown = next; pc.scroll(next); syncSkip() }
       }
+
       const tickPC = () => stepPC(performance.now())
 
       // ---------- pular o Manifesto (utils/manifestoSkip.js) ----------
@@ -397,11 +394,12 @@ export function useManifestoHorizontal(rootRef, lang) {
         setSkip({ visible: skipActive && !past && !jumping, mode: proxy.d >= sceneAEnd ? 'back' : 'skip', cartaz: atCartaz && skipActive })
         if (atCartaz) markManifestoSeen()
       }
+      // o destino do salto (botão, menu, âncora): a tela já formada, com a barra em
+      // 99% (pcCartaz); dali o scroll segue normal
       const cartazY = () => st.start + pcAt + vh * pcCartaz(reduced)
       // O salto: o scroll vai de uma vez ao destino e todas as suavizações (scrub)
-      // fecham nele — nada da sequência toca; a seção 6 vai direto ao fim do roteiro
-      // e o PC direto ao cartaz. Os eventos em tempo real do PC (lâmpada, carimbo,
-      // cliques, tranco) já não tocam quando se chega depois deles.
+      // fecham nele — nada da sequência anterior toca; a seção 6 vai direto ao ponto
+      // do roteiro em que o scroll está.
       async function land(toCartaz) {
         const y = toCartaz ? cartazY() : Math.max(0, docTop(q('#manifesto')) - chromeBottom())
         if (toCartaz) { s6?.snap(); pcJump = true }
@@ -422,21 +420,20 @@ export function useManifestoHorizontal(rootRef, lang) {
           return true
         }
         if (mode === 'work') {
-          // da seção 6 em diante (ou já no cartaz, na folha, abaixo): só rola até o cartaz
+          // sem cortina: da seção 6 em diante (o PC, a folha) só rola até o cartaz
           if (st.scroll() >= st.start + s6At) { scrollSmooth(cartazY()); return true }
           mode = 'skip'
         }
         jumping = true
         syncSkip()
         const toCartaz = mode !== 'back'
-        try { await runPortal({
-          origin,
-          label: (p) => `${String(Math.round((toCartaz ? p : 1 - p) * 100)).padStart(3, '0')}%`,
-          work: async () => {
+        try {
+          // a cortina de dither, a transição padrão entre seções (utils/pageTransition.js)
+          await curtain(toCartaz ? 'trabalhos' : 'manifesto', origin, async () => {
             await land(toCartaz)
             history.replaceState(history.state, '', `${location.pathname}${location.search}${toCartaz ? '#trabalhos' : ''}`)
-          },
-        }) } finally {
+          })
+        } finally {
           jumping = false
           syncSkip()
         }
@@ -652,6 +649,7 @@ export function useManifestoHorizontal(rootRef, lang) {
 
       function apply() {
         const d = proxy.d
+        if (d > 0) goNear() // dentro do pin: o cursor 3D e a seção 3 montam mesmo sem ter passado pela seção 2
         const x = -Math.min(d, travelA)
         gsap.set(track, { x })
         // Com o PC no ar (camada opaca por cima de tudo), o que fica embaixo — a TV, a
@@ -726,6 +724,7 @@ export function useManifestoHorizontal(rootRef, lang) {
         ruler.style.setProperty('--act2-dip', dip)
         curtainNow = curtain
         chrome() // grão e header claro sobre o escuro (até a lâmpada do PC acender)
+        syncSkip() // o modo do botão (pular/voltar) segue o scroll, não só os eventos do pin
         // régua: cabeçote no scroll do pin, trecho vermelho = cursor no caminho
         const p = clamp01(d / (travelA + scrollB))
         rulerW ||= ruler.clientWidth // (medida no layout; ler aqui, depois das escritas, forçava um layout por quadro)
@@ -898,6 +897,9 @@ export function useManifestoHorizontal(rootRef, lang) {
         refreshPriority: -3,
         onToggle: (self) => { skipActive = self.isActive; syncSkip() },
       })
+      // criada já dentro da faixa (remontagem pela troca de idioma) ela não dispara onToggle
+      skipActive = skipSt.isActive
+      syncSkip()
 
       // Boot do PC: gatilho próprio porque começa antes do pin (o proxy acima
       // só anda dentro dele). Mesma régua (px a partir do início do pin) e o
@@ -1053,6 +1055,12 @@ export function useManifestoHorizontal(rootRef, lang) {
         onEnter: markManifestoSeen,
         onToggle: (self) => setSkip({ cartaz: self.isActive }),
       })
+      // criadas já no meio do caminho (remontagem pela troca de idioma) elas não disparam
+      // onToggle/onEnter: o estado sai da posição atual
+      mActive = mSkipSt.isActive
+      if (mModeSt && mModeSt.scroll() >= mModeSt.start) mMode = 'back'
+      mSync()
+      if (mSeenSt) setSkip({ cartaz: mSeenSt.isActive })
       const mCartazY = () => Math.max(0, docTop(s6Scene) - chromeBottom())
       // empilhado, o Manifesto cresce depois dos gatilhos criados (fontes, as seções 5 e
       // 6 medindo sozinhas): sem recalcular, as faixas ficavam com as posições velhas
@@ -1076,18 +1084,16 @@ export function useManifestoHorizontal(rootRef, lang) {
         mJumping = true
         mSync()
         const toCartaz = mode !== 'back'
-        try { await runPortal({
-          origin,
-          label: (p) => `${String(Math.round((toCartaz ? p : 1 - p) * 100)).padStart(3, '0')}%`,
-          work: async () => {
+        try {
+          await curtain(toCartaz ? 'trabalhos' : 'manifesto', origin, async () => {
             const target = toCartaz ? s6Scene : q('#manifesto')
             if (target) scrollNow(Math.max(0, docTop(target) - chromeBottom()))
             await nextFrame() // (o cache de scroll do ScrollTrigger: ver o salto no desktop)
             ScrollTrigger.update()
             finishScrubs()
             history.replaceState(history.state, '', `${location.pathname}${location.search}${toCartaz ? '#trabalhos' : ''}`)
-          },
-        }) } finally {
+          })
+        } finally {
           mJumping = false
           mSync()
         }

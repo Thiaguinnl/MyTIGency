@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLenis } from 'lenis/react'
 import { useHeaderScroll } from '../hooks/useHeaderScroll'
 import { useActiveSection } from '../hooks/useActiveSection'
 import { useLanguage } from '../context/LanguageContext'
-import { usePrevLabelHeld } from '../utils/pageTransition'
+import { usePrevLabelHeld, scrollToTop, curtainTo, originOf } from '../utils/pageTransition'
 import { DecodeText } from './DecodeText'
 import { useSkipState } from '../utils/manifestoSkip'
 import { Menu } from './Menu'
@@ -16,16 +15,16 @@ export function Header({ page = 'home' }) {
   const scrolled = useHeaderScroll() || isContact
   const entering = usePrevLabelHeld()
   const { t } = useLanguage()
-  const lenis = useLenis()
 
   // Hero is permanently position:fixed (see useHeroMarqueeReveal), so its
   // getBoundingClientRect().top never changes — a native #top jump would be
-  // a no-op. Scroll to the real document top instead.
+  // a no-op. Ainda na Home, sobe até o topo; de outra seção, a cortina de dither.
   const handleHomeClick = (e) => {
     if (isContact) return
     e.preventDefault()
     e.stopPropagation()
-    lenis?.scrollTo(0)
+    if (activeId === 'top') scrollToTop()
+    else curtainTo('top', originOf(e))
   }
   const headerRef = useRef(null)
   const triggerRef = useRef(null)

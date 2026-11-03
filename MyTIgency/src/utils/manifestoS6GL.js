@@ -14,8 +14,6 @@
 // Imagens: em cor ou no dither de 4 cinzas do site (o mesmo da TV e do cursor
 // 3D), em células de 3 px de tela. Texto: papel.
 // "lendo": fica oca (contorno de 1,5 px, papel a 60% — a "promessas" da cena A).
-// Final: a onda de choque do "apresentar" (uShock) passa empurrando o texto
-// para fora, com a frente em vermelho; na grade, acende os pontos e os apaga.
 // Também: lupa sob a bola do cursor, desfoque leve das linhas fora de foco,
 // grão. A câmera em perspectiva é posta de modo que z = 0 caia 1:1 em px.
 import * as THREE from 'three'
@@ -28,11 +26,6 @@ const GLSL_UTIL = /* glsl */ `
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float b2(vec2 p) { p = floor(p); return fract(p.x * 0.5 + p.y * p.y * 0.75); }
 float b4(vec2 p) { return b2(p * 0.5) * 0.25 + b2(p); }
-// onda de choque: anel de raio r (px de tela), largura w; devolve o quanto o pixel está no anel
-float ring(vec2 sp, vec4 shock, float w) {
-  float q = (length(sp - shock.xy) - shock.z) / w;
-  return exp(-q * q);
-}
 `
 
 const VERT = /* glsl */ `
@@ -57,7 +50,6 @@ uniform vec3 uRed;
 uniform float uAlpha, uE, uFx, uStag, uType, uRise, uBoxBot, uWave, uBlurMax, uTrail, uRgbMax, uRGB, uMotion, uDefocus;
 uniform float uGrain, uTime, uInvX, uRevealX, uHollow, uDpr, uViewH, uImgMode;
 uniform sampler2D uImg;
-uniform vec4 uShock;
 uniform vec3 uMouse;
 uniform float uMouseR;
 varying vec2 vUv;
@@ -105,14 +97,6 @@ void main() {
     float f = exp(-dot(d, d) / (uMouseR * uMouseR)) * uMouse.z;
     uv = (p - d * f * 0.45) / uSize;
   }
-  // onda de choque do "apresentar": empurra para fora do centro do clique
-  float shock = 0.0;
-  if (uShock.w > 0.01) {
-    shock = ring(sp, uShock, 70.0);
-    vec2 dir = normalize(sp - uShock.xy + 0.0001);
-    uv -= vec2(dir.x, -dir.y) * shock * uShock.w * px;
-    shock *= clamp(uShock.w / 24.0, 0.0, 1.0);
-  }
   // sobe de trás da máscara, ondulando como na água
   uv.y -= k * uRise;
   uv.y += sin(uv.x * 7.0 + uTime * 2.4) * k * uWave;
@@ -131,7 +115,7 @@ void main() {
   }
   float ar = ag;
   float ab = ag;
-  float rgb = k * uRgbMax + uRGB + shock * 9.0;
+  float rgb = k * uRgbMax + uRGB;
   if (rgb > 0.2) {
     ar = S(uv + vec2(rgb * px.x, 0.0), px, blur, uMotion);
     ab = S(uv - vec2(rgb * px.x * 0.7, 0.0), px, blur, uMotion);
@@ -182,20 +166,10 @@ const GRID_FRAG = /* glsl */ `
 precision highp float;
 uniform vec2 uRes;
 uniform float uDpr, uReveal, uUi, uTime;
-uniform vec4 uShock;
-uniform vec3 uClear; // pontos: centro e raio já varridos pela onda (z < 0 = nada varrido)
 ${GLSL_UTIL}
 void main() {
   vec2 p = gl_FragCoord.xy / uDpr;
   p.y = uRes.y - p.y;
-  // pontos: atrás da frente da onda, somem de vez
-  float kept = uClear.z < 0.0 ? 1.0 : smoothstep(uClear.z - 60.0, uClear.z, length(p - uClear.xy));
-  // a onda do "apresentar" também passa pela grade
-  float shock = 0.0;
-  if (uShock.w > 0.01) {
-    shock = ring(p, uShock, 70.0);
-    p -= normalize(p - uShock.xy + 0.0001) * shock * uShock.w;
-  }
   float xr = p.x / uRes.x;
   // entrada: os pontos nascem tortos e ralos e vão se firmando,
   // da direita (que chega primeiro) para a esquerda
@@ -210,15 +184,15 @@ void main() {
   float pt = 1.0 - smoothstep(0.0, w * 0.6 + 0.9, length(d));
   // e cada ponto acende aos poucos (opacidade), com o próprio atraso, junto da formação
   float lag = hash(floor(p / 32.0 + 0.5)) * 0.5;
-  float a = pt * mix(0.22, 0.16, left) * kept * smoothstep(lag, lag + 0.5, form);
+  float a = pt * mix(0.22, 0.16, left) * smoothstep(lag, lag + 0.5, form);
   // o pisca: um limiar Bayer em células de 3 px que ferve a 12,5 quadros/s;
   // a densidade cresce com a formação, e no canto esquerdo fica rala para sempre
   float boil = floor(uTime * 12.5);
   float th = b4(floor(p / 3.0) + vec2(boil * 1.7, boil * 3.1));
   float dens = form * (1.0 - left * 0.8);
   a *= step(th + 0.001, dens) * (1.0 + left * 0.5);
-  // na onda, os pontos acendem (a grade some junto com a interface, mas a onda ainda a pega)
-  float alpha = a * uUi + pt * 0.6 * shock * 0.35 * clamp(uShock.w / 24.0, 0.0, 1.0);
+  // a grade some junto com a interface
+  float alpha = a * uUi;
   gl_FragColor = vec4(vec3(0.957, 0.953, 0.937) * alpha, alpha);
 }`
 
@@ -270,7 +244,7 @@ export function mountTextGL(canvas) {
       uAlpha: num(0), uE: num(0), uFx: num(1), uStag: num(0.6), uType: num(0), uRise: num(0), uBoxBot: num(0),
       uWave: num(0), uBlurMax: num(0), uTrail: num(0), uRgbMax: num(0), uRGB: num(0), uMotion: num(0), uDefocus: num(0),
       uGrain: num(0), uTime: num(0), uInvX: num(-1), uRevealX: num(2), uHollow: num(0), uDpr: num(1), uViewH: num(1),
-      uShock: num(new THREE.Vector4()), uMouse: num(new THREE.Vector3()), uMouseR: num(60),
+      uMouse: num(new THREE.Vector3()), uMouseR: num(60),
       uImg: num(itex), uImgMode: num(0),
     }
     const mat = new THREE.ShaderMaterial({
@@ -340,6 +314,7 @@ export function mountTextGL(canvas) {
       for (const l of lines) l.dispose()
       geo.dispose()
       renderer.dispose()
+      renderer.forceContextLoss()
     },
   }
 }
@@ -396,7 +371,7 @@ export function mountGridGL(canvas) {
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
   const u = {
     uRes: { value: new THREE.Vector2(1, 1) }, uDpr: { value: 1 }, uReveal: { value: 0 }, uUi: { value: 1 },
-    uTime: { value: 0 }, uShock: { value: new THREE.Vector4() }, uClear: { value: new THREE.Vector3(0, 0, -1) },
+    uTime: { value: 0 },
   }
   const mat = new THREE.ShaderMaterial({
     uniforms: u, fragmentShader: GRID_FRAG,
@@ -416,25 +391,18 @@ export function mountGridGL(canvas) {
       u.uDpr.value = dpr
       last = ''
     },
-    /** reveal 0..1 (entrada), ui 0..1 (some no "apresentar"), shock: [x, y, raio, força],
-     *  clear: [x, y, raio] já varrido pela onda (os pontos ali não voltam) */
-    render(time, reveal, ui, shock = null, clear = null) {
+    /** reveal 0..1 (entrada), ui 0..1 (some no fim da seção, com a interface) */
+    render(time, reveal, ui) {
       // o pontilhado "ferve" a 12,5 quadros/s: só redesenha quando algo muda
-      const sk = shock ? shock.map((v) => v.toFixed(1)).join(',') : ''
-      const ck = clear ? clear.map((v) => v.toFixed(0)).join(',') : ''
-      const key = `${Math.floor(time * 12.5)}|${reveal.toFixed(4)}|${ui.toFixed(4)}|${sk}|${ck}`
+      const key = `${Math.floor(time * 12.5)}|${reveal.toFixed(4)}|${ui.toFixed(4)}`
       if (key === last) return
       last = key
       u.uTime.value = time
       u.uReveal.value = reveal
       u.uUi.value = ui
-      if (shock) u.uShock.value.set(...shock)
-      else u.uShock.value.w = 0
-      if (clear) u.uClear.value.set(...clear)
-      else u.uClear.value.z = -1
       renderer.render(scene, camera)
     },
-    dispose() { mat.dispose(); renderer.dispose() },
+    dispose() { mat.dispose(); renderer.dispose(); renderer.forceContextLoss() },
   }
 }
 

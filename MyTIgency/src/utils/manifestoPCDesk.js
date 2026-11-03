@@ -16,6 +16,9 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { Font } from 'three/addons/loaders/FontLoader.js'
+// as fontes da palavra (OFL; só A–Z + acentos, convertidas para o formato do three)
+const FONTS = import.meta.glob('../assets/*.typeface.json', { eager: true, import: 'default' })
 import { drawAll } from './warmup'
 import logoRaw from '../assets/logo.svg?raw'
 
@@ -51,9 +54,6 @@ const CARTAZ = {
   fit: 0.94, // a palavra ocupa esta fração da largura (no máximo: ver ws no frame)
   gap: 22, // px entre a palavra e o microtexto, e entre ele e a borda de trás da mesa
   away: 0.22, // moldura, legendas e microtexto saem neste começo da inclinação
-  // a parede (com a palavra) anda contra o cursor: px de curso de borda a borda da
-  // tela, e a inércia (s) — a profundidade de estar atrás do PC
-  par: { x: 36, y: 12, tau: 0.3 },
   maxH: 0.5, // a palavra nunca mais alta que isto da tela (palavra curta, como "Work", ficaria gigante)
 }
 const IMPACT = `<svg viewBox="-50 -50 100 100">${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(${a})"/>`).join('')}</svg>`
@@ -67,9 +67,7 @@ const sticker = (text) => {
     ${logo}</svg>`
 }
 
-function cartaz({ back, front }, tx) {
-  const letters = [...tx.word.toUpperCase()].map((c) => `<span>${c}</span>`).join('')
-  back.insertAdjacentHTML('beforeend', `<div class="ec-word"><div class="ec-o">${letters}</div><div class="ec-f">${letters}</div></div>`)
+function cartaz({ front }, tx) {
   const root = Object.assign(document.createElement('div'), { className: 'ec' })
   front.append(root)
   root.innerHTML = `
@@ -80,58 +78,27 @@ function cartaz({ back, front }, tx) {
     <div class="ec-side ec-r"><i></i><p class="env-mono">${tx.next} <b>( 07 )</b> <span data-v="pct">000%</span></p></div>
     <div class="ec-stk">${sticker(tx.sticker)}</div>
     <div class="s6-impact ec-imp">${IMPACT}</div>`
-  const word = back.querySelector('.ec-word')
-  const spans = [...word.querySelectorAll('.ec-o span')].map((el, i) => [el, word.querySelectorAll('.ec-f span')[i]])
   const q = (s) => root.querySelector(s)
   const chrome = [q('.ec-frame'), ...root.querySelectorAll('.ec-cap')]
   const sideL = q('.ec-l'), sideR = q('.ec-r'), lineL = sideL.querySelector('i'), lineR = sideR.querySelector('i')
   const pct = q('[data-v="pct"]')
   const stk = q('.ec-stk'), imp = q('.ec-imp')
-  let wordH = 80, prevT = null, textL = 0, textR = 0, sideH = 16, alive = true
+  let prevT = null, textL = 0, textR = 0, sideH = 16, alive = true
   let impT = 0
-  const par = { x: 0, y: 0, last: 0 } // o parallax da parede, com inércia
-  const measure = (vw) => {
-    // a palavra ocupa CARTAZ.fit da largura (mede a 100 px e escala), até CARTAZ.maxH da altura
-    css(word, 'fontSize', '100px')
-    const byW = (100 * vw * CARTAZ.fit) / word.offsetWidth, byH = (100 * innerHeight * CARTAZ.maxH) / word.offsetHeight
-    css(word, 'fontSize', `${Math.min(byW, byH).toFixed(1)}px`)
-    wordH = word.offsetHeight
+  const measure = () => {
     textL = sideL.firstElementChild.offsetWidth
     textR = sideR.lastElementChild.offsetWidth
     sideH = sideL.offsetHeight
   }
-  let vwNow = innerWidth
-  document.fonts.ready.then(() => { if (alive) measure(vwNow) }) // as medidas mudam quando as fontes chegam
+  document.fonts.ready.then(() => { if (alive) measure() }) // as medidas mudam quando as fontes chegam
 
   return {
-    resize(vw) { vwNow = vw; measure(vw) },
+    /** altura do microtexto: a palavra (3D, na mesa) encolhe para ele caber acima da mesa */
+    get sideH() { return sideH },
+    resize() { measure() },
     frame(st) {
       const { T, pc } = st // pc: o ajuste do PC com a câmera inclinando
       const away = pc ? ramp(pc.e, 0, CARTAZ.away) : 0
-      // a palavra fica atrás do PC, centrada na altura dele; as letras sobem uma a uma.
-      // Inclinando, a parede sobe junto (wallDy). Um tiquinho de profundidade: a
-      // parede anda menos que o cursor. Ela ocupa CARTAZ.fit da largura, mas encolhe
-      // (ws) se o microtexto não couber entre ela e a mesa: em tela larga a palavra
-      // cresce com a largura e o PC/mesa com a altura
-      const cy = st.dev.y + st.dev.h * 0.47
-      // parallax: o alvo pelo cursor (−½..½ da tela), a posição chega com inércia
-      const dt = par.last ? Math.min(0.05, (st.now - par.last) / 1000) : 0
-      par.last = st.now
-      const k = dt && !st.reduce ? 1 - Math.exp(-dt / CARTAZ.par.tau) : 1
-      const tx0 = st.mouse ? -(st.mouse[0] / st.vw - 0.5) * CARTAZ.par.x : 0
-      const ty0 = st.mouse ? -(st.mouse[1] / st.vh - 0.5) * CARTAZ.par.y : 0
-      par.x += (tx0 - par.x) * k; par.y += (ty0 - par.y) * k
-      const room = (st.horizon ?? Infinity) - cy - CARTAZ.gap - sideH - CARTAZ.gap
-      const ws = Math.max(0.5, Math.min(1, (2 * room) / wordH))
-      css(word, 'transform', `translate(calc(-50% + ${par.x.toFixed(2)}px), ${(cy - wordH / 2 + (pc?.wallDy ?? 0) + par.y).toFixed(2)}px) scale(${ws.toFixed(4)})`)
-      const [r0, r1, rd] = CARTAZ.rise
-      spans.forEach(([o, f], i) => {
-        const k = easeOut(ramp(T, r0 + i * rd, r1 - (spans.length - 1 - i) * rd))
-        const tr = k < 1 ? `translateY(${((1 - k) * 60).toFixed(1)}%)` : ''
-        css(o, 'transform', tr); css(f, 'transform', tr)
-        css(o, 'opacity', n3(k)); css(f, 'opacity', n3(k))
-      })
-      css(word, '--fill', n3(easeInOut(st.p)))
       // moldura, legendas e o microtexto dos lados, com o fio até o PC
       const ch = n3(easeOut(ramp(T, ...CARTAZ.chrome)) * (1 - away))
       chrome.forEach((el) => css(el, '--in', ch))
@@ -140,7 +107,7 @@ function cartaz({ back, front }, tx) {
       txt(pct, `${String(Math.round(st.p * 100)).padStart(3, '0')}%`)
       // logo abaixo da palavra (em cima dela o microtexto se perde no vermelho), na
       // parede, antes da borda de trás da mesa
-      const y = (cy + (wordH * ws) / 2 + CARTAZ.gap).toFixed(1), m = st.vw * 0.03
+      const y = (st.wordBottom + CARTAZ.gap).toFixed(1), m = st.vw * 0.03
       css(sideL, 'transform', `translate(${m.toFixed(1)}px, ${y}px)`)
       css(sideR, 'transform', `translate(calc(${(st.vw - m).toFixed(1)}px - 100%), ${y}px)`)
       css(lineL, 'width', `${Math.max(0, (st.dev.x - 24 - m - textL - 12) * sk).toFixed(1)}px`)
@@ -165,6 +132,318 @@ function cartaz({ back, front }, tx) {
     dispose() { alive = false; clearTimeout(impT) },
   }
 }
+
+// ========== a palavra (3D) ==========
+// "TRABALHOS" em letras extrudadas, em arco sobre o PC, na parede atrás dele — o
+// tratamento do Ascension (Pegassi): cromo que reflete um estúdio de painéis de luz,
+// brilhos de quatro pontas em cantos das letras que acendem quando o giro alinha a
+// faceta deles com a câmera, um halo atrás e a separação de cores (RGB) quando a
+// palavra gira. Ela não anda: gira em volta do próprio centro olhando para o cursor
+// (até LOOK.lean rad, com inércia). Começa em contorno e enche da esquerda para a
+// direita com a barra de "Abrindo trabalhos…" (um plano de corte). Duas palavras
+// ("Our Work") se dividem dos lados do monitor. Letras rígidas, giradas no arco
+// (não curvadas): nada a recalcular por quadro além de transform.
+// A palavra vive numa cena própria, desenhada antes da mesa numa textura (a mesa a
+// encobre por cima) e posta na tela com a separação de cores (a mesa: frame()).
+// WORD.look: 'chrome' (o Ascension) ou 'red' (o verniz vermelho da MyT)
+// WORD.font: o arquivo em src/assets (*.typeface.json): titan-one e bagel-fat-one
+// (gordas e arredondadas, as letras-adesivo do WordArt / Y2K),
+// unbounded-black (grotesca extra-larga, a dos cartazes de computador dos anos 90) ou
+// archivo-xc-black (a do cartaz em CSS de antes)
+// WORD.border: os anéis de adesivo em volta de cada letra, [largura em em, cor], do mais
+// fino ao mais largo ([] = sem): o papel branco e um fio de tinta por fora, que lê
+// sobre a parede clara; letras vizinhas se juntam como um adesivo recortado só
+const WORD = { look: 'red', font: '../assets/titan-one.typeface.json', border: [[0.07, '#fbfaf6'], [0.1, '#161514']] }
+const LOOK = { lean: 0.15, tau: 0.2 } // giro máx. (rad) com o cursor na borda da tela; inércia (s) — os do Ascension
+const ARC = {
+  depth: 0.16, // espessura das letras (em)
+  track: 0.02, // espaçamento entre letras (em): o bisel largo as engorda
+  r: 2, // raio do arco, em larguras da palavra (menor = arco mais fechado)
+  grow: 0.16, // as letras das pontas crescem até isto (perspectiva de dentro do arco)
+  yaw: 0.6, // e giram para o centro (fração do ângulo no arco): mostram a lateral
+  wall: -1.6, // z da parede (unidades da mesa)
+  gap: 0.72, // palavra dividida: o vão entre as duas, em larguras da imagem do PC
+}
+const RED_DEEP = '#b3261c' // a lateral das letras no verniz vermelho: o vermelho na sombra
+const HAIR = [new THREE.Color('#f4f3ef'), new THREE.Color('#141414')] // o contorno: sala escura / lâmpada acesa
+// os materiais: o cromo é o do Ascension; o verniz, vermelho metálico com verniz por cima
+const CHROME = { color: '#f2f3f6', metalness: 1, roughness: 0.11, clearcoat: 0.25, clearcoatRoughness: 0.3, envMapIntensity: 1.15 }
+const GLOSS = { metalness: 0.3, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.1 }
+// O estúdio que o material reflete: painéis brilhantes [largura, altura, brilho, x, y, z,
+// azulado] num fundo cinza-azulado escuro — os "lightformers" do Ascension: um painel
+// grande de frente, uma moldura de barras em volta, faixas finas (os riscos de luz que
+// correm pelo cromo) e barras escuras (o contraste)
+const STUDIO = {
+  bg: [0.2, 0.21, 0.27],
+  panels: [
+    [8.2, 5.2, 0.95, 0, 0, 9, true],
+    [13, 1.3, 6, 0, 4.4, 8], [13, 1.3, 5, 0, -4.4, 8], [1.3, 8, 6, -6.4, 0, 8], [1.3, 8, 5, 6.4, 0, 8],
+    [9, 1.1, 9, 0, 8, 4], [0.9, 12, 7, -8, 1, 5], [0.9, 12, 5, 8, -0.5, 5], [12, 0.8, 6, -1, -6, 5],
+    [18, 3.5, 0.1, 0, -4.5, 6], [20, 0.6, 0.06, 0, 2.6, 6], [20, 0.7, 0.1, -1, -2.4, 6],
+  ],
+}
+function studioEnv(pmrem) {
+  const sc = new THREE.Scene()
+  sc.background = new THREE.Color().setRGB(...STUDIO.bg)
+  const geo = new THREE.PlaneGeometry(1, 1)
+  for (const [w, h, v, x, y, z, blue] of STUDIO.panels) {
+    const color = blue ? new THREE.Color().setRGB(v * 0.8, v * 0.85, v * 1.08) : new THREE.Color().setScalar(v)
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, toneMapped: false }))
+    m.scale.set(w, h, 1)
+    m.position.set(x, y, z)
+    m.lookAt(0, 0, 0)
+    sc.add(m)
+  }
+  const tex = pmrem.fromScene(sc, 0, 0.1, 100).texture
+  sc.traverse((o) => o.material?.dispose())
+  geo.dispose()
+  return tex
+}
+// Os brilhos (sprites de quatro pontas, desenhados como os do Ascension: um risco
+// longo, um curto, o halo e o miolo). Cada um tem uma faceta (a direção do canto da
+// letra): ele acende e estica quando o giro leva essa faceta ao anel FLARE.ring em
+// volta da câmera, e apaga devagar
+const FLARE = { facet: 0.62, ring: { at: 0.5, width: 0.14 }, dip: 0.6, stretch: 0.9, cross: 0.2, attack: 0.45, decay: 0.08, sway: 0.12, rot: 0.75, size: 0.95 }
+const flareRing = (a) => Math.exp(-(((a - FLARE.ring.at) / FLARE.ring.width) ** 2))
+function flareTex() {
+  const c = Object.assign(document.createElement('canvas'), { width: 512, height: 512 })
+  const x = c.getContext('2d')
+  x.globalCompositeOperation = 'lighter'
+  const spike = (len, th, rot, k = 1) => {
+    x.save(); x.translate(256, 256); x.rotate(rot)
+    const g = x.createLinearGradient(-len, 0, len, 0)
+    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.18, `rgba(255,255,255,${0.75 * k})`)
+    g.addColorStop(0.5, `rgba(255,255,255,${k})`); g.addColorStop(0.82, `rgba(255,255,255,${0.75 * k})`); g.addColorStop(1, 'rgba(255,255,255,0)')
+    x.fillStyle = g
+    x.beginPath(); x.moveTo(-len, 0); x.quadraticCurveTo(0, th, len, 0); x.quadraticCurveTo(0, -th, -len, 0); x.fill()
+    x.restore()
+  }
+  spike(256, 5.6, 0); spike(112.6, 5.6, Math.PI / 2, 0.95)
+  for (const [r, stops] of [[112.6, [[0, 0.55], [0.3, 0.2], [1, 0]]], [46, [[0, 0.85], [0.5, 0.35], [1, 0]]], [20.5, [[0, 1], [0.6, 0.9], [1, 0]]]]) {
+    const g = x.createRadialGradient(256, 256, 0, 256, 256, r)
+    stops.forEach(([o, a]) => g.addColorStop(o, `rgba(255,255,255,${a})`))
+    x.fillStyle = g; x.fillRect(0, 0, 512, 512)
+  }
+  return new THREE.CanvasTexture(c)
+}
+// o halo: o desenho da letra borrado, atrás dela, somando luz azulada (#dfe6ff)
+const HALO = { tint: '#dfe6ff', strength: 0.5, red: 0.3, blur: 0.16, pad: 0.5 } // borrão e margem em em
+// (desenhado do próprio contorno da letra: vale para qualquer fonte). O quadro vai de
+// −pad a ha + pad em x e de −pad a 1 + pad em y (em, da origem da letra)
+function haloTex(shapes, ha) {
+  const S = 160, w = ha + 2 * HALO.pad, h = 1 + 2 * HALO.pad
+  const c = Object.assign(document.createElement('canvas'), { width: Math.ceil(w * S), height: Math.ceil(h * S) })
+  const x = c.getContext('2d')
+  x.filter = `blur(${HALO.blur * S}px)`
+  x.fillStyle = '#fff'
+  x.beginPath()
+  for (const s of shapes) for (const path of [s, ...s.holes]) {
+    path.getPoints(4).forEach((p, i) => x[i ? 'lineTo' : 'moveTo']((p.x + HALO.pad) * S, c.height - (p.y + HALO.pad) * S))
+    x.closePath()
+  }
+  x.fill('evenodd')
+  return { tex: new THREE.CanvasTexture(c), w, h }
+}
+
+function palavra(tx, envMap) {
+  const font = new Font(FONTS[WORD.font])
+  const res = font.data.resolution
+  const chrome = WORD.look === 'chrome'
+  const ext = { depth: ARC.depth, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.022, bevelSegments: 6, curveSegments: 6 } // bisel largo e redondo (o "fillet" do Ascension): é nele que a luz risca
+  const front = ARC.depth + ext.bevelThickness
+  // o corte: o material fica à esquerda da barra, o contorno à direita
+  const fillPl = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)
+  const restPl = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0)
+  const group = new THREE.Group(), inner = new THREE.Group()
+  group.add(inner)
+  const starMap = flareTex()
+  const halos = new Map()
+  const haloColor = chrome ? new THREE.Color(HALO.tint).multiplyScalar(HALO.strength) : new THREE.Color(RED).multiplyScalar(HALO.red) // no vermelho, o halo é da cor da marca, mais fraco (a parede é clara)
+  let cap = 0
+  const parts = tx.word.toUpperCase().split(/\s+/).map((wd) => {
+    let x = 0
+    const letters = [...wd].map((ch, j) => {
+      const ha = (font.data.glyphs[ch]?.ha ?? res * 0.3) / res
+      const shapes = font.generateShapes(ch, 1)
+      const geo = new THREE.ExtrudeGeometry(shapes, ext)
+      geo.translate(-ha / 2, 0, -front) // origem no pé da letra, no meio; a face da frente em z 0
+      geo.computeBoundingBox()
+      const bb = geo.boundingBox
+      cap = Math.max(cap, bb.max.y)
+      const mats = chrome
+        ? [new THREE.MeshPhysicalMaterial({ ...CHROME, envMap, transparent: true, clippingPlanes: [fillPl] })]
+        : [
+            // a face (grupo 0 da extrusão) com um tico de emissivo, para o vermelho da marca não morrer na sombra
+            new THREE.MeshPhysicalMaterial({ ...GLOSS, envMap, color: RED, emissive: RED, emissiveIntensity: 0, transparent: true, clippingPlanes: [fillPl] }),
+            new THREE.MeshPhysicalMaterial({ ...GLOSS, envMap, color: RED_DEEP, transparent: true, clippingPlanes: [fillPl] }),
+          ]
+      const mesh = new THREE.Mesh(geo, chrome ? mats[0] : mats)
+      mesh.rotation.order = 'YXZ' // gira no arco (z), depois para o centro (y)
+      // os anéis de adesivo: a mesma letra, fina e engordada (o bisel quase plano vira
+      // um anel), logo atrás do corpo dela — cada anel mais largo, mais atrás
+      WORD.border.forEach(([wd, color], k) => {
+        const bGeo = new THREE.ExtrudeGeometry(shapes, { depth: 0.01, bevelEnabled: true, bevelThickness: 0.002, bevelSize: wd, bevelSegments: 1, curveSegments: ext.curveSegments })
+        bGeo.translate(-ha / 2, 0, -front - 0.035 - 0.02 * k)
+        const bM = new THREE.MeshStandardMaterial({ color, roughness: 0.6, envMap, envMapIntensity: 0.4, transparent: true, clippingPlanes: [fillPl] })
+        mesh.add(new THREE.Mesh(bGeo, bM))
+        mats.push(bM) // (sobe e aparece junto com a letra)
+      })
+      // o contorno da face da frente
+      const seg = []
+      for (const s of shapes) for (const path of [s, ...s.holes]) {
+        const p = path.getPoints(ext.curveSegments)
+        p.forEach((a, i) => { const b = p[(i + 1) % p.length]; seg.push(a.x - ha / 2, a.y, 0.002, b.x - ha / 2, b.y, 0.002) })
+      }
+      const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(seg, 3))
+      const lineM = new THREE.LineBasicMaterial({ color: HAIR[0], transparent: true, depthWrite: false, clippingPlanes: [restPl] })
+      mesh.add(new THREE.LineSegments(lineGeo, lineM))
+      // o halo, atrás da letra (só onde ela já encheu)
+      if (!halos.has(ch)) halos.set(ch, haloTex(shapes, ha))
+      const hl = halos.get(ch)
+      const haloM = new THREE.MeshBasicMaterial({ map: hl.tex, color: haloColor, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, clippingPlanes: [fillPl] })
+      const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), haloM)
+      halo.scale.set(hl.w, hl.h, 1)
+      halo.position.set(0, 0.5, -front - 0.05)
+      halo.renderOrder = -1
+      mesh.add(halo)
+      // os brilhos: dois cantos da letra (alternando), com a faceta apontando para fora do canto
+      const stars = [[bb.min.x, bb.max.y, -0.7, 0.7], [bb.max.x, bb.min.y + 0.05, 0.7, -0.7], [bb.max.x, bb.max.y, 0.7, 0.7], [bb.min.x, bb.min.y + 0.05, -0.7, -0.7]]
+        .filter((_, k) => (k + j) % 3 === 0).map(([sx, sy, fx, fy], k) => {
+          const sm = new THREE.SpriteMaterial({ map: starMap, rotation: FLARE.rot, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })
+          const sp = new THREE.Sprite(sm)
+          const size = FLARE.size * (0.75 + 0.5 * (((j * 7 + k * 3) % 5) / 4))
+          sp.position.set(sx, sy, 0.02)
+          sp.scale.setScalar(size)
+          sp.renderOrder = 2
+          sp.userData = { size, facet: [fx, fy], lit: 1 }
+          mesh.add(sp)
+          return sp
+        })
+      inner.add(mesh)
+      const L = { mesh, ha, cx: x + ha / 2, mats, lineM, haloM, stars }
+      x += ha + ARC.track
+      return L
+    })
+    return { letters, w: x - ARC.track }
+  })
+  const all = parts.flatMap((p) => p.letters)
+  const growK = 1 / (1 - Math.cos(1 / (2 * ARC.r))) // as pontas da palavra (meia largura no arco) crescem ARC.grow
+  const ringMax = flareRing(FLARE.facet)
+
+  const look = { x: 0, y: 0, last: 0 } // o giro para o cursor (−1..1 da tela), com inércia
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hit = new THREE.Vector3()
+  const wallPl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -ARC.wall)
+  const nrm = new THREE.Vector3(), eul = new THREE.Euler(), tmp = new THREE.Vector3()
+  let bottom = 0, key = '', shown = false
+
+  return {
+    group,
+    /** y de tela do pé da palavra (o microtexto vai logo abaixo) */
+    get bottom() { return bottom },
+    /** o que muda a imagem além do que a mesa já olha */
+    get key() { return key },
+    /** há letra na tela (senão a mesa nem desenha a camada da palavra) */
+    get shown() { return shown },
+    /** a separação de cores agora (uv): cresce com o giro */
+    get split() { return chrome ? 0.0004 + (Math.abs(look.x) + Math.abs(look.y)) * 0.0008 : 0 },
+    lamp(Lm) {
+      all.forEach((L) => { if (!chrome) L.mats[0].emissiveIntensity = 0.12 * Lm; L.lineM.color.lerpColors(HAIR[0], HAIR[1], Lm) })
+    },
+    // com a câmera de frente (e = 0): a palavra é posta em px de tela, como era no
+    // DOM, e levada à parede; inclinando, ela fica parada no mundo e sobe com a parede
+    layout(st, camera, proj, horizon, sideH) {
+      // o giro: o alvo pelo cursor (−1..1 da tela), chega com inércia (reduced motion: parada de frente)
+      const dt = look.last ? Math.min(0.05, (st.now - look.last) / 1000) : 0
+      look.last = st.now
+      const kl = dt ? 1 - Math.exp(-dt / LOOK.tau) : 1
+      const ax = st.mouse && !st.reduce ? (st.mouse[0] / st.vw) * 2 - 1 : 0
+      const ay = st.mouse && !st.reduce ? (st.mouse[1] / st.vh) * 2 - 1 : 0
+      look.x += (ax - look.x) * kl; look.y += (ay - look.y) * kl
+      if (Math.abs(ax - look.x) + Math.abs(ay - look.y) < 0.002) { look.x = ax; look.y = ay }
+      // cursor embaixo: o topo vem para a frente (a face olha para baixo); à direita: gira para a direita
+      group.rotation.set(look.y * LOOK.lean, look.x * LOOK.lean, 0)
+
+      // tamanho (px por em): a palavra ocupa CARTAZ.fit da largura, até a altura
+      // máxima; dividida, cada metade vai da borda do vão até a borda da faixa
+      const span = st.vw * CARTAZ.fit
+      const split = parts.length > 1
+      const gapPx = split ? st.dev.w * ARC.gap : 0
+      let s = split ? (span / 2 - gapPx / 2) / Math.max(...parts.map((p) => p.w)) : span / parts[0].w
+      s = Math.min(s, (st.vh * CARTAZ.maxH * 0.9) / cap)
+      const R = (ARC.r * span) / s, gap = gapPx / s
+      // o centro de cada letra no arco (em, a partir do centro do arco)
+      const X = split
+        ? [...parts[0].letters.map((L) => -gap / 2 - parts[0].w + L.cx), ...parts[1].letters.map((L) => gap / 2 + L.cx)]
+        : parts[0].letters.map((L) => L.cx - parts[0].w / 2)
+      const [r0, r1, rd] = CARTAZ.rise
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+      let flaring = false
+      shown = false
+      eul.set(look.y * LOOK.lean, look.x * LOOK.lean, 0)
+      all.forEach((L, i) => {
+        const th = X[i] / R, sn = Math.sin(th), cs = Math.cos(th)
+        const g = 1 + ARC.grow * (1 - cs) * growK
+        // as letras sobem uma a uma, de trás da mesa
+        const k = easeOut(ramp(st.T, r0 + i * rd, r1 - (all.length - 1 - i) * rd))
+        const lift = (1 - k) * 0.6 * cap
+        L.mesh.position.set(R * sn - sn * lift, R * cs - R - cs * lift, 0)
+        L.mesh.rotation.set(0, -th * ARC.yaw, -th)
+        L.mesh.scale.setScalar(g)
+        L.mats.forEach((m) => { m.opacity = k })
+        L.lineM.opacity = 0.32 * k
+        L.haloM.opacity = k
+        L.mesh.visible = k > 0
+        shown ||= k > 0
+        // os brilhos: a faceta, girada com a palavra (e com a letra no arco), perto do
+        // anel em volta da câmera acende e estica; longe, apaga devagar até FLARE.dip
+        for (const sp of L.stars) {
+          const [fx, fy] = sp.userData.facet
+          nrm.set(fx * Math.sin(FLARE.facet), fy * Math.sin(FLARE.facet), Math.cos(FLARE.facet)).applyAxisAngle(Z_AXIS, -th).applyEuler(eul)
+          const a = flareRing(Math.acos(Math.min(1, Math.max(-1, nrm.z)))) / ringMax
+          const o = sp.userData.lit
+          const lit = Math.abs(a - o) < 0.003 ? a : o + (a - o) * (a > o ? FLARE.attack : FLARE.decay)
+          if (lit !== o) flaring = true
+          sp.userData.lit = lit
+          const over = Math.max(0, lit - 1), sz = sp.userData.size
+          sp.material.opacity = k * (1 - FLARE.dip * Math.max(0, 1 - lit))
+          sp.material.rotation = FLARE.rot + FLARE.sway * (look.x * fy - look.y * fx)
+          sp.scale.set(sz * (1 + FLARE.stretch * over), sz * (1 + FLARE.cross * over), 1)
+        }
+        // a caixa da palavra assentada (os 4 cantos da letra, girados no arco)
+        for (const [cx, cy] of [[-L.ha / 2, 0], [L.ha / 2, 0], [-L.ha / 2, cap], [L.ha / 2, cap]]) {
+          const px = R * sn + (cx * cs + cy * sn) * g, py = R * cs - R + (-cx * sn + cy * cs) * g
+          x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py)
+        }
+      })
+      inner.position.set(-(x0 + x1) / 2, -(y0 + y1) / 2, 0)
+
+      // centrada na altura do PC; encolhe (ws) se o microtexto não couber entre ela e a mesa
+      const wordH = (y1 - y0) * s
+      const cy = st.dev.y + st.dev.h * 0.47
+      const room = horizon - cy - CARTAZ.gap - sideH - CARTAZ.gap
+      const ws = Math.max(0.5, Math.min(1, (2 * room) / wordH))
+      bottom = cy + (wordH * ws) / 2
+      // o ponto da parede sob o centro da palavra, e quantos px mede 1 unidade ali
+      const sx = split ? st.dev.x + st.dev.w / 2 : st.vw / 2, sy = cy
+      ndc.set((sx / st.vw) * 2 - 1, 1 - (sy / st.vh) * 2)
+      ray.setFromCamera(ndc, camera)
+      ray.ray.intersectPlane(wallPl, hit)
+      const ppu = proj(hit.x + 1, hit.y, ARC.wall)[0] - proj(hit.x, hit.y, ARC.wall)[0]
+      const sc = (s * ws) / ppu
+      group.position.copy(hit)
+      group.scale.setScalar(sc)
+      // a barra enche da esquerda para a direita (margem nas pontas: lateral e bisel passam da caixa)
+      const p = easeInOut(st.p)
+      const fx = p <= 0 ? -1e4 : p >= 1 ? 1e4 : hit.x + lerp(-(x1 - x0) / 2, (x1 - x0) / 2, p) * sc
+      fillPl.constant = fx; restPl.constant = -fx
+      // os brilhos só onde a letra já encheu
+      group.updateMatrixWorld(true)
+      all.forEach((L) => L.stars.forEach((sp) => { sp.visible = sp.getWorldPosition(tmp).x < fx }))
+      key = `${look.x.toFixed(3)},${look.y.toFixed(3)},${p.toFixed(4)},${ws.toFixed(3)}${flaring ? `,${st.now}` : ''}`
+    },
+  }
+}
+const Z_AXIS = new THREE.Vector3(0, 0, 1)
 
 // ========== a mesa (3D) ==========
 // Unidades: 1 = a altura da imagem do PC na tela. Origem: o centro da borda de
@@ -432,6 +711,38 @@ function mesa({ desk }, tx) {
   scene.traverse((o) => [].concat(o.material ?? []).forEach((m) => { if (m.isMeshStandardMaterial && !mats.includes(m)) mats.push(m) }))
   let envLamp = -1
 
+  // a palavra na parede (corte da barra: plano de corte por material), numa cena
+  // própria com o estúdio dela (aceso mesmo com a sala escura) e cópias das luzes da
+  // sala (o verniz vermelho as sente; o cromo, quase só o estúdio). Ela é desenhada
+  // numa textura (wordRT) e posta na tela com a separação de cores (comp); a mesa vem
+  // por cima e a encobre embaixo
+  renderer.localClippingEnabled = true
+  const glossEnv = studioEnv(pmrem)
+  const word = palavra(tx, glossEnv)
+  const wordScene = new THREE.Scene()
+  const wHemi = hemi.clone(), wSun = sun.clone(), wScr = scr.clone()
+  wSun.castShadow = wScr.castShadow = false
+  wordScene.add(word.group, wHemi, wSun, wSun.target, wScr)
+  const wordRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 })
+  // a textura guarda a cor linear já multiplicada pelo alfa: separa vermelho e azul
+  // (o verde fica no centro), recupera o alfa da luz somada (halo, brilhos: viram
+  // "screen" sobre a parede) e devolve em sRGB
+  const comp = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+    uniforms: { u_tex: { value: wordRT.texture }, u_split: { value: new THREE.Vector2() } },
+    vertexShader: 'varying vec2 v_uv; void main() { v_uv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: `uniform sampler2D u_tex; uniform vec2 u_split; varying vec2 v_uv;
+      vec3 enc(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+      void main() {
+        vec4 c = texture2D(u_tex, v_uv);
+        vec3 col = vec3(texture2D(u_tex, v_uv + u_split).r, c.g, texture2D(u_tex, v_uv - u_split).b);
+        float a = clamp(max(c.a, max(col.r, max(col.g, col.b))), 0.0, 1.0);
+        gl_FragColor = vec4(enc(clamp(col / max(a, 1e-4), 0.0, 1.0)) * a, a);
+      }`,
+    depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+  }))
+  comp.frustumCulled = false
+  const compScene = new THREE.Scene().add(comp), compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+
   let w = 0, h = 0, last = '', horizon = Infinity
   const glowColor = new THREE.Color()
   const v = new THREE.Vector3()
@@ -458,12 +769,22 @@ function mesa({ desk }, tx) {
   return {
     /** y de tela da borda de trás da mesa (acima é parede) */
     get horizon() { return horizon },
-    resize(vw, vh) { w = vw; h = vh; renderer.setSize(vw, vh, false); last = '' },
+    /** y de tela do pé da palavra */
+    get wordBottom() { return word.bottom },
+    resize(vw, vh) {
+      w = vw; h = vh
+      renderer.setSize(vw, vh, false)
+      const pr = renderer.getPixelRatio()
+      wordRT.setSize(Math.round(vw * pr), Math.round(vh * pr))
+      last = ''
+    },
     /** sob a tela de carregamento: compila os shaders, sobe as texturas e assa as
      *  sombras — feito no 1º quadro visível, travava a página por até 2 s */
     async warm() {
       await renderer.compileAsync(scene, camera)
-      scene.traverse((o) => [].concat(o.material ?? []).forEach((m) => { if (m.map) renderer.initTexture(m.map) }))
+      await renderer.compileAsync(wordScene, camera)
+      renderer.compile(compScene, compCam)
+      ;[scene, wordScene].forEach((sc) => sc.traverse((o) => [].concat(o.material ?? []).forEach((m) => { if (m.map) renderer.initTexture(m.map) })))
       renderer.render(scene, camera) // shadowMap.needsUpdate: este render assa as sombras
       drawAll(renderer, scene, camera) // (as sombras já assadas: este só usa cada shader uma vez)
       renderer.clear()
@@ -477,6 +798,7 @@ function mesa({ desk }, tx) {
       let pc = null
       place(st, 0)
       horizon = proj(0, 0, back)[1] // a borda de trás do tampo, com a câmera de frente
+      word.layout(st, camera, proj, horizon, st.sideH)
       if (e > 0) {
         const O0 = proj(0, 0, 0), U0 = proj(0, 1, 0), L0 = proj(-0.5, 0, 0), R0 = proj(0.5, 0, 0), W0 = proj(0, 0.5, -1.6)
         place(st, e)
@@ -487,7 +809,7 @@ function mesa({ desk }, tx) {
         }
       }
 
-      const sig = `${st.T.toFixed(4)}|${e.toFixed(4)}|${st.lamp}|${st.glow.toFixed(3)}|${st.dev.x.toFixed(1)}|${st.dev.y.toFixed(1)}|${st.dev.h.toFixed(1)}|${st.gc}`
+      const sig = `${st.T.toFixed(4)}|${e.toFixed(4)}|${st.lamp}|${st.glow.toFixed(3)}|${st.dev.x.toFixed(1)}|${st.dev.y.toFixed(1)}|${st.dev.h.toFixed(1)}|${st.gc}|${word.key}`
       if (sig === last) return pc
       last = sig
       // a luz: a tela sozinha na sala escura; a lâmpada acende o resto (e os reflexos)
@@ -498,17 +820,35 @@ function mesa({ desk }, tx) {
       scr.intensity = MESA.light * st.glow
       glowColor.setRGB(st.gc[0] / 255, st.gc[1] / 255, st.gc[2] / 255, THREE.SRGBColorSpace)
       scr.color.copy(glowColor)
-      if (envLamp !== Lm) { envLamp = Lm; mats.forEach((m) => { m.envMapIntensity = 0.06 + 0.7 * Lm }) }
-      renderer.render(scene, camera)
+      if (envLamp !== Lm) { envLamp = Lm; mats.forEach((m) => { m.envMapIntensity = 0.06 + 0.7 * Lm }); word.lamp(Lm) }
+      // a palavra (com as mesmas luzes da sala) numa textura, posta na tela com a
+      // separação de cores; a mesa por cima. Sem letra na tela, só a mesa
+      if (word.shown) {
+        wHemi.intensity = hemi.intensity; wSun.intensity = sun.intensity
+        wScr.intensity = scr.intensity; wScr.color.copy(scr.color)
+        renderer.setRenderTarget(wordRT)
+        renderer.clear()
+        renderer.render(wordScene, camera)
+        renderer.setRenderTarget(null)
+        const sp = word.split
+        comp.material.uniforms.u_split.value.set(sp, sp * 0.3)
+        renderer.autoClear = false
+        renderer.clear()
+        renderer.render(compScene, compCam)
+        renderer.render(scene, camera)
+        renderer.autoClear = true
+      } else renderer.render(scene, camera)
       return pc
     },
     dispose() {
       const seen = new Set()
-      scene.traverse((o) => {
+      ;[scene, wordScene, compScene].forEach((sc) => sc.traverse((o) => {
         o.geometry?.dispose()
         ;[].concat(o.material ?? []).forEach((m) => { if (seen.has(m)) return; seen.add(m); m.map?.dispose(); m.dispose() })
-      })
+      }))
       envTex.dispose()
+      glossEnv.dispose()
+      wordRT.dispose()
       pmrem.dispose()
       renderer.dispose()
       renderer.forceContextLoss()
@@ -525,11 +865,11 @@ export function mountPCDesk(layers, tx) {
   const sheetLayer = Object.assign(document.createElement('div'), { className: 'ecm-sheet' })
   layers.front.prepend(sheetLayer)
   return {
-    resize(vw, vh) { m.resize(vw, vh); c.resize(vw) },
+    resize(vw, vh) { m.resize(vw, vh); c.resize() },
     warm: () => m.warm(),
     frame(st) {
-      const pc = m.frame(st)
-      c.frame({ ...st, pc, horizon: m.horizon })
+      const pc = m.frame({ ...st, sideH: c.sideH })
+      c.frame({ ...st, pc, wordBottom: m.wordBottom })
       css(sheetLayer, 'opacity', n3(ramp(st.T2, 0.86, 1)))
       return pc
     },

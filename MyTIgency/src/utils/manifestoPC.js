@@ -3,9 +3,9 @@
 // dither), o wallpaper de colinas, dither → cor entrando do centro, texto papel,
 // CRT alto; o entorno é a opção E (manifestoPCDesk.js: cartaz + mesa + folha).
 //
-// Tudo é função do scroll do pin lateral (useManifestoHorizontal), em alturas de
-// tela a partir do fim da seção 6: HOLD0 com o cartaz parado, LEN de transição
-// (T: 0 → 1) e TRAVEL.len da câmera inclinando até a folha (T2: 0 → 1). Uma
+// Tudo é função de p (useManifestoHorizontal), em alturas de tela a partir do fim
+// da seção 6: HOLD0 com o cartaz parado, LEN de transição (T: 0 → 1, num capítulo
+// com ímã: ver pcP) e TRAVEL.len da câmera inclinando até a folha (T2: 0 → 1). Uma
 // transform só (o rig) leva a tela e o aparelho: começa cobrindo a viewport (o
 // cartaz 1:1, igual ao fim da seção 6), encolhe até a tela 4:3 e dá o zoom out
 // até o aparelho. O buraco da tela do aparelho cai exatamente na caixa do rig.
@@ -36,13 +36,19 @@ const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 
 // ---------- roteiro (frações de T) ----------
 const HOLD0 = 0.35 // alturas de tela com o cartaz parado antes de começar
-const LEN = 3.2 // alturas de tela da transição
+const LEN = 3.2 // alturas de tela da transição (T: 0 → 1)
 /** alturas de tela de scroll que a cena pede no pin (reduced motion: o estado final, parado) */
 export const pcLength = (reduce) => (reduce ? 1 : HOLD0 + LEN + TRAVEL.len)
-/** onde fica o cartaz completo (barra em 99%, lâmpada acesa, adesivo), em alturas de
- *  tela: o destino do botão de pular o Manifesto (utils/manifestoSkip.js) */
+// O capítulo com ímã: a transição segue o scroll, mas o hook (useManifestoHorizontal
+// → snap) leva o scroll sozinho do clique no "apresentar" ao cartaz completo (ref.:
+// shader.se), num caminho que diz quanto tempo cada trecho de T dura
+/** o p de um T da transição */
+export const pcP = (T) => HOLD0 + LEN * T
+/** o fim do cartaz parado, em p: o PC começa a transição daqui */
+export const pcHold = HOLD0
+/** o p com o cartaz completo (barra em 99%, lâmpada acesa, adesivo) */
 export const pcCartaz = (reduce) => (reduce ? 0.5 : HOLD0 + LEN * 0.99)
-/** a partir daqui a câmera inclina para a folha (o botão de pular sai) */
+/** a partir deste p a câmera inclina para a folha (o botão de pular sai) */
 export const pcTravelAt = (reduce) => (reduce ? Infinity : HOLD0 + LEN)
 // Degauss: o "tum" que marca a virada de cartaz para monitor (tempo real, ao
 // passar de at): clarão curto, anéis de cor que giram e se abrem, tremor e
@@ -51,6 +57,8 @@ export const pcTravelAt = (reduce) => (reduce ? Infinity : HOLD0 + LEN)
 // 1 − e^(−pushK·s)), somada ao que o scroll anda, com uma crista clara na borda
 // enquanto o impulso dura (e^(−waveK·s), até waveDur)
 const DEGAUSS = { at: 0.07, dur: 1.3, push: 0.24, pushK: 4.5, waveK: 2.4, waveDur: 2 }
+/** o T do tranco (o cartaz vira monitor, o dither entra): onde o botão de pular cai */
+export const pcImpact = DEGAUSS.at
 const TL = {
   crt: [0, 0.42], // a curva e os efeitos do tubo se espalham aos poucos
   shrink: [0, 0.36], // o cartaz encolhe até a tela 4:3
@@ -890,6 +898,9 @@ export function mountPC(host, { reduce = false, onLamp = () => {}, cursorFrom = 
   return {
     poster,
     measure,
+    /** o tranco agora (o salto do botão de pular cai logo depois do ponto dele, já
+     *  na tela: sem cruzar o ponto rolando, ele não tocaria) */
+    kick() { if (!reduce) { deg.t0 = performance.now(); deg.prevT = DEGAUSS.at; dirty = true; wake() } },
     /** aquece a cena antes de ela entrar (shaders, texturas, sombras da mesa, a
      *  imagem do PC): o hook o chama sob a tela de carregamento (utils/warmup.js) */
     warm: () => Promise.all([wall.warm(), env.warm(), pcImg.decode().catch(() => {})]),

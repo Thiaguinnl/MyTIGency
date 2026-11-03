@@ -28,9 +28,7 @@ function RouteFallback({ route }) {
   if (route !== '/' || hasNavigated()) return null
   return (
     <div className="loading-screen" aria-hidden="true">
-      <span className="loading-screen-label">
-        {t.loading.label}<span className="loading-screen-cursor">_</span>
-      </span>
+      <span className="loading-screen-label">{t.loading.label}</span>
     </div>
   )
 }

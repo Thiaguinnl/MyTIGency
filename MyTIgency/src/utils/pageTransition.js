@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { decodeAt, decodeDuration, DECODE_TICK_MS } from '../hooks/useAsciiGlitch'
 import { hasSkipGo } from './manifestoSkip'
+import { warmupsDone } from './warmup'
 
 // ---------- Transição entre páginas (home ⇄ contato) ----------
 // Cortina de dither: a página atual é coberta de tinta por uma onda de
@@ -35,15 +37,15 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const normalize = (p) => p.replace(/\.html$/, '').replace(/\/index$/, '').replace(/\/+$/, '') || '/'
 
-function labelFor(path) {
-  let lang = 'pt'
+function langOf() {
   try {
-    if (localStorage.getItem('myt-lang') === 'en') lang = 'en'
+    if (localStorage.getItem('myt-lang') === 'en') return 'en'
   } catch {
     // padrão PT
   }
-  return PAGES[path][lang]
+  return 'pt'
 }
+const labelFor = (path) => PAGES[path][langOf()]
 
 // ---------- Desenho da cortina ----------
 // Dither retrô: dither ordenado Bayer 8×8 — a mesma fórmula do shader da TV
@@ -286,6 +288,11 @@ export function scrollSmooth(y) {
   if (lenis) lenis.scrollTo(y, { force: true })
   else window.scrollTo({ top: y, behavior: 'smooth' })
 }
+/** sobe suave até o topo (logos, Menu → Home, ainda na Home) */
+export function scrollToTop() {
+  if (lenis) lenis.scrollTo(0, { force: true })
+  else window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 // Âncora vinda de outra página (/#trabalhos): os pins do GSAP da home ainda
 // estão se montando e empurram o layout, então repete até a seção parar no
@@ -360,6 +367,117 @@ async function go(to, url, { push, ox, oy }) {
   if (PAGES[pending] && pending !== route) {
     go(pending, new URL(window.location.href), { push: false, ox: window.innerWidth / 2, oy: window.innerHeight / 2 })
   }
+}
+
+// ---------- Troca de seção na home ----------
+// A mesma cortina, sem trocar de rota: cobre, o salto acontece por baixo (work),
+// revela. É a transição padrão do site entre seções (Menu, logos, o botão de pular
+// o Manifesto); dentro da própria seção, quem chama só rola.
+const SECTIONS = {
+  top: { pt: 'home', en: 'home' },
+  manifesto: { pt: 'manifesto', en: 'manifesto' },
+  trabalhos: { pt: 'trabalhos', en: 'work' },
+  carreiras: { pt: 'carreiras', en: 'careers' },
+}
+
+/** de onde a cortina nasce: o clique, ou o centro do elemento (teclado não tem coordenada) */
+export function originOf(e) {
+  let { clientX: x, clientY: y } = e
+  if (!x && !y) {
+    const r = e.currentTarget.getBoundingClientRect()
+    x = r.left + r.width / 2
+    y = r.top + r.height / 2
+  }
+  return [x, y]
+}
+
+/** as suavizações (scrub) do ScrollTrigger fecham no scroll atual: depois de um
+ *  salto, nada da sequência do caminho toca quando a cortina abre */
+export function finishScrubs() {
+  ScrollTrigger.getAll().forEach((t) => {
+    const tw = t.getTween?.()
+    if (tw && typeof tw.progress === 'function') tw.progress(1)
+  })
+}
+
+/** cobre a tela com a cortina de dither, roda work() por baixo e revela.
+ *  section: chave de SECTIONS (o rótulo) ou o próprio texto; [x, y]: de onde nasce.
+ *  false se outra cortina já estiver no ar. */
+export async function curtain(section, [x, y], work, { cover = COVER_MS, reveal = REVEAL_MS, menuExit = true } = {}) {
+  if (busy) return false
+  busy = true
+  if (menuExit && document.querySelector('.menu-panel')) await wait(MENU_EXIT_MS)
+  overlay = createOverlay(SECTIONS[section]?.[langOf()] ?? section)
+  setCovered(true)
+  try {
+    let decoding = null
+    if (reduceMotion) {
+      overlay.root.style.opacity = '0'
+      overlay.solid()
+      overlay.showLabel(true)
+      await overlay.fade(true, 200)
+    } else {
+      await overlay.wave(x, y, cover, false, (t) => {
+        if (!decoding && t >= LABEL_AT) {
+          overlay.showLabel(true)
+          decoding = overlay.decode()
+        }
+      })
+    }
+    await nextFrame() // a cortina inteira na tela antes do salto (ou da remontagem) congelar o quadro
+    await work()
+    await nextFrame()
+    await decoding
+    await wait(HOLD_MS)
+    overlay.showLabel(false)
+    if (reduceMotion) await overlay.fade(false, 250)
+    else {
+      await wait(PAUSE_MS)
+      await overlay.wave(window.innerWidth / 2, window.innerHeight / 2, reveal, true)
+    }
+  } finally {
+    overlay.remove()
+    overlay = null
+    setCovered(false)
+    busy = false
+  }
+  return true
+}
+
+/** vai a uma seção da home pela cortina: 'top' (o topo do documento), 'carreiras'
+ *  (o footer, revelado por baixo do painel: o fim do documento) ou o id de uma seção */
+export function curtainTo(section, origin) {
+  return curtain(section, origin, async () => {
+    const doc = document.documentElement
+    const el = document.getElementById(section)
+    const y = section === 'top' ? 0
+      : section === 'carreiras' ? doc.scrollHeight - window.innerHeight
+        : el ? el.getBoundingClientRect().top + window.scrollY : 0
+    scrollNow(y)
+    await nextFrame() // (o ScrollTrigger lê o scroll de um cache por quadro)
+    ScrollTrigger.update()
+    finishScrubs()
+  })
+}
+
+// ---------- Troca de idioma (home) ----------
+// Os textos do Manifesto vivem em DOM montado fora do React, em canvas e no 3D do
+// PC (a palavra, o disquete, os bilhetes): trocar o idioma remonta o Manifesto
+// inteiro — ~1 s de tela parada no desktop, segundos num aparelho fraco. A troca
+// acontece por baixo de uma versão curta da cortina, que só revela com a página
+// assentada (o aquecimento dos shaders novos incluído). No contato a troca é barata
+// e segue direta.
+const LANG_LABELS = { pt: 'português', en: 'english' }
+const LANG_COVER_MS = 600
+const LANG_REVEAL_MS = 700
+/** troca o idioma por baixo da cortina. apply: aplica na hora (flushSync), para a
+ *  remontagem cair inteira com a tela coberta; (x, y): de onde a cortina nasce */
+export async function switchLang(lang, apply, x, y) {
+  if (busy || route !== '/') { apply(); return }
+  await curtain(LANG_LABELS[lang], [x, y], async () => {
+    apply()
+    await Promise.race([warmupsDone(), wait(MAX_WAIT_MS)])
+  }, { cover: LANG_COVER_MS, reveal: LANG_REVEAL_MS, menuExit: false }) // (o menu segue aberto na troca de idioma)
 }
 
 document.addEventListener('click', (e) => {

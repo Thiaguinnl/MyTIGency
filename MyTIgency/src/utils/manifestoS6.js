@@ -12,8 +12,8 @@
 // forma (texto, mover, lápis, redimensionar). "foi escrita" é digitada pelo
 // scroll; a tecla ENTER (render do Blender) é uma "letra" a mais e leva um
 // clique, com o impacto do PC da seção 2; o cursor faz cada gesto de verdade
-// (clica, arrasta, risca com a ponta do lápis, puxa a alça, clica em
-// "apresentar" e descansa ao lado de "trabalho." — é o mesmo cursor que segue
+// (clica, arrasta, risca com a ponta do lápis, puxa a alça e descansa ao lado
+// de "trabalho." — é o mesmo cursor que segue
 // para dentro do PC, manifestoPC.js). Fotos: entram em dither e assentam em
 // cor (a 1ª, quadrada, é o "+" de "+ E POSICIONADA"). Stop-motion de 2 poses
 // (~0,5 s, em degrau, fora de fase) nas etiquetas, caixas, rabiscos e na tecla.
@@ -22,7 +22,7 @@
 // deslocamento lateral (shift 0→1, 1 px de scroll = 1 px de lado); p vai até
 // LENGTH. Os primeiros LEAD são da régua chegando (assenta, o punho solta e
 // vira seta); o roteiro do editor conta dali. Posições são função do scroll;
-// cliques, onda de choque, stop-motion e troca de forma andam no tempo real (rAF próprio, só com a seção na tela).
+// cliques, stop-motion e troca de forma andam no tempo real (rAF próprio, só com a seção na tela).
 // Sem o pin (mobile) ou com reduced motion: o cartaz final, parado, com uma
 // régua desenhada no vão.
 import { mountTextGL, mountGridGL, canvasFont, placeholderImage } from './manifestoS6GL'
@@ -59,10 +59,11 @@ const P = {
   ours: 2.34,
   strike: { draw: [1.8, 2.1], hollow: [2.02, 2.16] },
   grow: { box: [2.7, 2.78], drag: [2.84, 3.14] },
-  // o fim acontece devagar: o sublinhado, a seta e o "apresentar" têm cada um o seu respiro
+  // o fim acontece devagar: o sublinhado e a seta têm cada um o seu respiro; depois a
+  // interface some (ui) e a câmera recua até o cartaz, com a palavra centralizada (fit)
   marker: [3.22, 3.52],
   hand: { arrow: [3.6, 3.82], tag: 3.82 },
-  present: { press: [3.94, 4.0], ui: [3.98, 4.38], fit: [4.04, 4.72] },
+  outro: { ui: [3.98, 4.38], fit: [4.04, 4.72] },
 }
 const LENGTH = 4.85
 // a chegada da régua, antes do roteiro (alturas de tela): ela desce e se
@@ -83,9 +84,9 @@ const settle = (u) => 1 + 2.2 * (u - 1) ** 3 + 1.2 * (u - 1) ** 2
 // a régua no texto: encolhe só um pouco (o vão é que alarga); teto em fração da coluna
 const RULER_FIT = { shrink: 0.88, max: 0.42 }
 const MORPH_MS = 160 // troca de forma do cursor (dither, por limiar de Bayer)
-// depois do "apresentar", o cursor vai descansar ao lado de "trabalho." / "você está"
+// depois da seta, o cursor vai descansar ao lado de "trabalho." / "você está"
 // (alturas de tela): é ali que o PC (manifestoPC.js) o pega e ele segue para os pop-ups
-const REST = [4.14, 4.6]
+const REST = 4.6
 const FOCUS = 0.56
 const PAN = 0.26
 const MOVE_FROM = { x: 0.24, y: 0.6, rot: 5 }
@@ -101,8 +102,6 @@ const BALL = { r: 46, strength: 1 }
 // ritmo da digitação (ms de roteiro, esticados sobre P.type): intervalo base + variação,
 // pausa depois de espaço, respiro antes da tecla
 const TYPE = { first: 140, base: 72, jitter: 58, space: 120, image: 240 }
-// onda de choque do "apresentar" (tempo real): velocidade (px/s), força inicial (px) e quanto dura (s)
-const SHOCK = { speed: 650, amp: 24, life: 2.8 }
 const FIT = 0.74 // o cartaz final ocupa esta fração da altura
 // fotos: o dither segura um pouco e se desfaz em cor, célula a célula, em 8 degraus
 // (12,5 qps, o ritmo dos pontos da grade)
@@ -205,8 +204,7 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
         <div class="s6-art s6-fg">${LINES.map(({ kind }) => `<div class="s6-fgl">${FG[kind] ?? ''}</div>`).join('')}</div>
       </div>
       <div class="s6-chrome">
-        <div class="s6-bar"><span class="s6-sp"></span>
-          <span class="s6-present"><svg viewBox="0 0 8 9"><path d="M0 0 8 4.5 0 9Z"/></svg>${esc(data.tags.present)}</span></div>
+        <div class="s6-bar"><span class="s6-sp"></span></div>
         <div class="s6-tools">${TOOLS.map(([name, svg]) => `<i data-tool="${name}"><svg viewBox="0 0 18 18">${svg}</svg></i>`).join('')}</div>
       </div>
       <div class="s6-impact"><svg viewBox="-50 -50 100 100">${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(${a})"/>`).join('')}</svg></div>
@@ -239,7 +237,6 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
   // stop-motion: cada peça com a sua fase (fora de fase entre si)
   const POSED = [[tagXY, 0], [tagScale, 0.5], [tagOurs, 0.25], [tagHand, 0.75], [moveBox, 0.4], [growBox, 0.9],
     [scr.circle, 0.15], [scr.strike, 0.6], [scr.under, 0.35], [scr.arrow, 0.85]]
-  const present = q('.s6-present')
   const ball = q('.s6-ball')
   const slot = q('.s6-slot')
   ed.classList.toggle('is-still', !carried)
@@ -289,8 +286,8 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     return acc
   })
   // cliques (tempo real): disparam ao passar do ponto no scroll; subir rearma
-  const HITS = { key: P.key, grab: P.move.grab, present: P.present.press[0] }
-  const hitT0 = { key: null, grab: null, present: null }
+  const HITS = { key: P.key, grab: P.move.grab }
+  const hitT0 = { key: null, grab: null }
   let lastHit = null
   // fotos: instante em que cada linha mostrou a sua (o dither se desfaz a partir dele)
   const imgT0 = LINES.map(() => null)
@@ -576,7 +573,6 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     const k = edK(e)
     return [(r.left - e.left + r.width * fx_) / k, (r.top - e.top + r.height * fy_) / k]
   })
-  const presentAt = (fx_ = 0.55, fy_ = 0.6) => elAt(present, fx_, fy_)
   // o descanso: à direita de "trabalho." / "você está", na altura entre as duas
   const restPt = () => {
     const a = tBox(iGrow - 2)
@@ -636,10 +632,8 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     [P.marker[0], P.marker[1], pen(scr.under), pen(scr.under), 'brush', 1],
     [P.marker[1], P.hand.arrow[0], pen(scr.under, 1), pen(scr.arrow, 0), 'arrow'],
     [P.hand.arrow[0], P.hand.arrow[1], pen(scr.arrow), pen(scr.arrow), 'brush', 1],
-    [P.hand.arrow[1], P.present.press[0], pen(scr.arrow, 1), () => presentAt(), 'arrow'],
-    [P.present.press[0], REST[0], () => presentAt(), () => presentAt(), 'arrow', 1],
-    [REST[0], REST[1], () => presentAt(), restPt, 'arrow'],
-    [REST[1], 99, restPt, restPt, 'arrow', 1],
+    [P.hand.arrow[1], REST, pen(scr.arrow, 1), restPt, 'arrow'],
+    [REST, 99, restPt, restPt, 'arrow', 1],
   ]
   const damp = (a, b, tau, dt) => (REDUCE || !dt ? b : lerp(a, b, 1 - Math.exp(-dt / tau)))
 
@@ -698,14 +692,14 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     drawScribble(scr.under, easeInOut(ramp(p, ...P.marker)))
     drawScribble(scr.arrow, easeInOut(ramp(p, ...P.hand.arrow)))
     tagHand.classList.toggle('on', p >= P.hand.tag)
-    const ui = 1 - easeInOut(ramp(p, ...P.present.ui))
+    const ui = 1 - easeInOut(ramp(p, ...P.outro.ui))
     growBox.style.opacity = ramp(p, ...P.grow.box) * ui
     const scaleTxt = `${data.tags.scale} ${Math.round(gs * 100)}%`
     if (tagScale.textContent !== scaleTxt) tagScale.textContent = scaleTxt // (trocar o nó a cada quadro repinta tudo em volta)
     tagScale.classList.toggle('on', p >= P.grow.drag[0])
     ed.style.setProperty('--ui', ui)
 
-    // ---- cliques (tempo real; subir rearma): a tecla, a pega da linha, o "apresentar" ----
+    // ---- cliques (tempo real; subir rearma): a tecla e a pega da linha ----
     let fired = null
     for (const h in HITS) {
       if (p >= HITS[h] && hitT0[h] === null) { hitT0[h] = now; lastHit = fired = h }
@@ -721,20 +715,6 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     const keyS = ka < HIT.pressed ? 'pressed' : poseAt(0.3) ? 'pose2' : 'idle'
     if (key.dataset.s !== keyS) key.dataset.s = keyS
     key.style.transform = `translateX(${jolt(ka, 40) * 3}px) scale(${squash(ka, -0.06)}, ${squash(ka, 0.12)})`
-    const pa = hitAge('present')
-    present.classList.toggle('press', pa < 0.6)
-    present.style.transform = `translateY(${jolt(pa) * 3}px) scale(${squash(pa, 0.14)})`
-
-    // ---- onda de choque: o clique em "apresentar" a dispara ----
-    const shockT0 = hitT0.present
-    let shock = null
-    let swept = null // pontos: o que a onda já varreu não volta
-    if (live && shockT0 !== null) {
-      const age = (now - shockT0) / 1000
-      const [cx, cy] = presentAt(0.5, 0.5)
-      swept = [cx, cy, age * SHOCK.speed]
-      if (age < SHOCK.life) shock = [cx, cy, age * SHOCK.speed, SHOCK.amp * (1 - age / SHOCK.life) ** 1.5]
-    }
 
     // ---- câmera (alvo pelo scroll, posição com inércia) ----
     let fy = focusY(0)
@@ -742,7 +722,7 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     const lastB = tBox(LINES.length - 1)
     const artH = lastB.y + lastB.h
     const fitS = Math.min(1, (vh * FIT) / artH)
-    const fit = easeInOut(ramp(p, ...P.present.fit))
+    const fit = easeInOut(ramp(p, ...P.outro.fit))
     const target = {
       s: lerp(1, fitS, fit),
       ax: lerp(ax0, (vw - W * fitS) / 2, fit),
@@ -829,8 +809,6 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
       u.uRevealX.value = i === iType
         ? (typed === typeUnits.length ? 2 : typed ? (px + typedEnd) / (b.w + px * 2) : -1)
         : 2
-      if (shock) u.uShock.value.set(...shock)
-      else u.uShock.value.w = 0
       // a bola incha o texto por baixo
       if (mouse && ballA > 0.01 && live) {
         u.uMouse.value.set(mouse[0] - left, top + h - mouse[1], ballA * BALL.strength)
@@ -840,12 +818,12 @@ export function mountS6(host, { still = false, ruler = null } = {}) {
     // aninhada na tela do PC, sob o filtro da curva do CRT: cada quadro novo daqui
     // obriga o filtro a refazer a tela inteira. Lá só redesenha no degrau da
     // fervura da grade (12,5 qps, o mesmo do grão) ou quando algo de fato muda
-    const renderKey = nested ? `${Math.floor(now / 80)}|${pRaw.toFixed(4)}|${ballA.toFixed(2)}|${shock ? 1 : 0}|${view.s.toFixed(4)}` : null
+    const renderKey = nested ? `${Math.floor(now / 80)}|${pRaw.toFixed(4)}|${ballA.toFixed(2)}|${view.s.toFixed(4)}` : null
     const doRender = !nested || renderKey !== lastRenderKey
     lastRenderKey = renderKey
     if (doRender) gl?.render(now / 1000)
 
-    if (doRender) grid?.render(now / 1000, REDUCE ? 1 : easeInOut(gridIn), ui, shock, swept)
+    if (doRender) grid?.render(now / 1000, REDUCE ? 1 : easeInOut(gridIn), ui)
 
     const arrived = shift >= 1 && pRaw >= 0
     const seat = seatOf(pRaw)

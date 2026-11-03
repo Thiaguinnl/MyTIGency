@@ -560,6 +560,7 @@ export function createAsciiLogoScene(container, options = {}) {
 
     effect.dispose()
     renderer.dispose()
+    renderer.forceContextLoss()
     scene.traverse((obj) => {
       if (obj.isMesh) {
         obj.geometry?.dispose()

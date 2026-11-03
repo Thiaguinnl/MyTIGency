@@ -166,7 +166,7 @@ export async function mountCursor3D(canvas, { size = 200, before } = {}) {
       removeEventListener('pointermove', onMove)
       removeEventListener('resize', resize)
       io.disconnect()
-      rt.dispose(); post.dispose(); renderer.dispose()
+      rt.dispose(); post.dispose(); renderer.dispose(); renderer.forceContextLoss()
     },
   }
 }

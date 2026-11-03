@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLenis } from 'lenis/react'
-import { useRoute } from '../utils/pageTransition'
+import { useRoute, scrollToTop, curtainTo, originOf } from '../utils/pageTransition'
 import { useLanguage } from '../context/LanguageContext'
 import empresaImg from '../assets/empresa.jpg'
 import conversaImg from '../assets/conversa.jpg'
@@ -76,6 +76,14 @@ export function Footer() {
     if (route !== '/contato') return
     e.preventDefault()
     lenis?.scrollTo(0, { duration: 1.6 })
+  }
+  // Logo do rodapé: a Hero é fixa, então a âncora #top não rola (ver Header.jsx).
+  // Na home, sair do rodapé para o topo é troca de seção: a cortina de dither
+  const toTop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (route === '/contato') scrollToTop()
+    else curtainTo('top', originOf(e))
   }
 
   const footerRef = useRef(null)
@@ -242,6 +250,11 @@ export function Footer() {
     const container = containerRef.current
     if (!header) return undefined
     const root = document.documentElement
+    // O empurrão vai direto em quem o usa (header e marquee): uma variável no
+    // <html> é herdada pela página inteira e recalculava o estilo de todos os
+    // elementos a cada quadro — a travada ao chegar no footer
+    const pushed = [header, document.querySelector('.marquee')].filter(Boolean)
+    const setPush = (v) => pushed.forEach((el) => el.style.setProperty('--chrome-push', v))
     let push = 0
     let rafId = 0
     // Só mede com o footer a até uma tela de distância: medir a cada scroll da
@@ -257,7 +270,7 @@ export function Footer() {
     function update() {
       rafId = 0
       if (!near) {
-        if (push) { push = 0; root.style.setProperty('--chrome-push', '0px'); root.classList.remove('footer-revealed') }
+        if (push) { push = 0; setPush('0px'); root.classList.remove('footer-revealed') }
         return
       }
       // Base do header sem o empurrão = até onde o "cromo" do topo desce
@@ -265,7 +278,7 @@ export function Footer() {
       const next = Math.min(0, Math.max(-chromeBottom, container.getBoundingClientRect().top - chromeBottom))
       if (next === push) return
       push = next
-      root.style.setProperty('--chrome-push', `${push}px`)
+      setPush(`${push}px`)
       root.classList.toggle('footer-revealed', push <= -chromeBottom)
     }
 
@@ -281,7 +294,7 @@ export function Footer() {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
       cancelAnimationFrame(rafId)
-      root.style.removeProperty('--chrome-push')
+      pushed.forEach((el) => el.style.removeProperty('--chrome-push'))
       root.classList.remove('footer-revealed')
     }
   }, [])
@@ -449,7 +462,7 @@ export function Footer() {
 
           {/* Logo + legal */}
           <div className="ft-bottom">
-            <a className="ft-bottom__logo" href="#top" aria-label="MyTIgency">
+            <a className="ft-bottom__logo" href="#top" aria-label="MyTIgency" onClick={toTop}>
               <Logo />
             </a>
             <div className="ft-bottom__legal t-small">

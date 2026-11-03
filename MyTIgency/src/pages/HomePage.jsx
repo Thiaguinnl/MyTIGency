@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { Header } from '../components/Header'
 import { Hero } from '../components/Hero'
 import { Marquee } from '../components/Marquee'
 import { Manifesto } from '../components/Manifesto'
 import { Work } from '../components/Work'
+import { Tech } from '../components/Tech'
 import { Footer } from '../components/Footer'
-import { LoadingScreen } from '../components/LoadingScreen'
+import { LoadingScreen, revealHero } from '../components/LoadingScreen'
 import { useHeroMarqueeReveal } from '../hooks/useHeroMarqueeReveal'
 import { useAppReady } from '../hooks/useAppReady'
 import { hasNavigated, markPageReady } from '../utils/pageTransition'
@@ -16,7 +17,9 @@ import { hasNavigated, markPageReady } from '../utils/pageTransition'
 function PageReadyGate() {
   const isReady = useAppReady()
   useEffect(() => {
-    if (isReady) markPageReady()
+    if (!isReady) return
+    revealHero()
+    markPageReady()
   }, [isReady])
   return null
 }
@@ -24,6 +27,13 @@ function PageReadyGate() {
 export default function HomePage() {
   useHeroMarqueeReveal()
   const [firstPage] = useState(() => !hasNavigated())
+
+  // Esconde a Hero (ainda coberta) até o gate liberar — ver revealHero
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    root.classList.add('hero-wait')
+    return () => root.classList.remove('hero-wait', 'hero-in')
+  }, [])
 
   return (
     <>
@@ -36,6 +46,7 @@ export default function HomePage() {
           <Manifesto />
           {/* Serviços faz parte de Trabalhos (Work.jsx) */}
           <Work />
+          <Tech />
         </div>
         {/* Fora do .reveal-panel: o footer (z-index:-1) fica preso atrás dele e é revelado pelo scroll */}
         <Footer />

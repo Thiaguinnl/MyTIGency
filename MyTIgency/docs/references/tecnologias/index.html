@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Referências Tecnologias</title>
+<style>
+  :root { --bg:#0b0b0c; --ink:#ededed; --dim:#8a8a8f; --line:#232326; --accent:#e5322d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 ui-monospace, "JetBrains Mono", monospace; }
+  main { max-width:1180px; margin:0 auto; padding:48px 16px 96px; }
+  h1 { font-size:clamp(28px,5vw,48px); margin:0 0 8px; letter-spacing:-.02em; }
+  h2 { font-size:20px; margin:56px 0 16px; border-top:1px solid var(--line); padding-top:24px; }
+  p, li { color:var(--dim); } strong { color:var(--ink); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:24px; }
+  figure { margin:0; border:1px solid var(--line); }
+  figure img { display:block; width:100%; height:auto; }
+  figcaption { padding:12px 14px; font-size:13px; color:var(--dim); }
+  figcaption b { color:var(--ink); display:block; margin-bottom:4px; }
+  .tag { color:var(--accent); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { border:1px solid var(--line); padding:10px; vertical-align:top; text-align:left; }
+  th { color:var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Seção Tecnologias — referências</h1>
+  <p>Prints capturados em 01/11/2026 (Playwright, 1440px). Arquivos soltos nesta mesma pasta.</p>
+
+  <h2>Sua referência</h2>
+  <div class="grid">
+    <figure><img src="00-referencia-framer.jpg" alt=""><figcaption><b>Framer — "Make magic happen"</b>Anel de cards de vidro com ícones orbitando uma mão. Força: um único objeto-herói, ícones como joia. Risco: é pôster estático; na web vira "objeto 3D bonito" se não reagir a nada.</figcaption></figure>
+    <figure><img src="12-igloo-8.png" alt=""><figcaption><b>Igloo Inc — Awwwards Site of the Year 2024</b><span class="tag">mesmo vocabulário</span> — anel de vidro/gelo em tempo real (Three.js), refração e luz interna, avançando por scroll. Prova de que o anel de vidro do seu pôster roda ao vivo no navegador — e de quanto custa (loader longo, GPU pesada).</figcaption></figure>
+    <figure><img src="12-igloo-3.png" alt=""><figcaption><b>Igloo — estado intermediário</b>O objeto muda de estado com o scroll, não fica girando em loop. Esse é o ponto que casa com o DESIGN.md (motion com causa visível).</figcaption></figure>
+    <figure><img src="13-lusion-0.png" alt=""><figcaption><b>Lusion — estúdio premiado (Awwwards/FWA)</b>Objetos 3D físicos (vidro, plástico, borracha) em tempo real com física. Referência de material e luz para os cards: brilho de borda sem glow roxo genérico.</figcaption></figure>
+  </div>
+
+  <h2>Seções de tecnologia que funcionam</h2>
+  <div class="grid">
+    <figure><img src="02-raycast-build-tools-3d.png" alt=""><figcaption><b>Raycast — "Build the perfect tools"</b><span class="tag">a melhor</span> — cada ferramenta vira um objeto isométrico com legenda técnica (FIG_01, ACTION BAR…), grade hairline, mono. Muito próximo da linguagem da MyT (hairline + mono + um acento).</figcaption></figure>
+    <figure><img src="03-raycast-keyboard-3d.png" alt=""><figcaption><b>Raycast — teclado 3D</b>Teclas acendem conforme o scroll/digitação. Objeto que responde, não decora.</figcaption></figure>
+    <figure><img src="01-raycast-extensions.png" alt=""><figcaption><b>Raycast — cards de extensões</b>Cards com o produto real dentro, não só o logo.</figcaption></figure>
+    <figure><img src="05-resend-integrate-tabs.png" alt=""><figcaption><b>Resend — "Integrate this weekend"</b>Clicar no logo troca o código real abaixo. A tecnologia prova o que faz em vez de só aparecer.</figcaption></figure>
+    <figure><img src="08-supabase-framework-code.png" alt=""><figcaption><b>Supabase — "Use Supabase with React"</b>Mesmo padrão: ícone → título muda → código. Menos glamour, mais verdade.</figcaption></figure>
+    <figure><img src="06-clerk-frameworks-grid.png" alt=""><figcaption><b>Clerk — grade de frameworks</b>Ícones em linha fina dentro de grade hairline. Ótimo fallback para mobile e reduced-motion.</figcaption></figure>
+    <figure><img src="10-basement-logo-grid-hairline.png" alt=""><figcaption><b>basement.studio — grade de logos</b>Estúdio premiado; grade monocromática com borda fina. Mostra que uma lista de logos só funciona quando é densa e uniforme.</figcaption></figure>
+    <figure><img src="04-resend-logos.png" alt=""><figcaption><b>Resend — faixa de logos</b>O formato mais comum — e o mais esquecível. Anti-referência para o que a seção não deve virar.</figcaption></figure>
+    <figure><img src="09-linear-integrations.png" alt=""><figcaption><b>Linear — integrações</b>Cada logo com uma frase do que faz. Bom modelo de texto (traduzido para a língua do dono de PME).</figcaption></figure>
+  </div>
+
+  <h2>Dá para fazer o seu modelo? Sim. Três caminhos</h2>
+  <table>
+    <tr><th></th><th>A · Pré-render (Blender → vídeo/sequência no scroll)</th><th>B · Tempo real total (Three.js)</th><th>C · Híbrido (recomendado)</th></tr>
+    <tr><td>Como</td><td>Cena inteira no Blender (Cycles), exporta frames, scroll controla o frame.</td><td>Mão GLB + cards com MeshPhysicalMaterial (transmission) + logos SVG extrudados + bloom.</td><td>Mão pré-renderizada (imagem/sequência com alpha) ou no dither 2D que já existe; anel de cards em Three.js ao vivo.</td></tr>
+    <tr><td>Visual</td><td>Igual ao pôster.</td><td>Vidro bom; pele realista fica "plástica".</td><td>Mão bonita + cards de verdade.</td></tr>
+    <tr><td>Interação</td><td>Nenhuma além do scroll.</td><td>Total.</td><td>Cards respondem (hover/toque → nome + o que entregamos com isso).</td></tr>
+    <tr><td>Peso</td><td>Vídeo/frames pesados.</td><td>Mais caro: transmission = passe extra de render, somado às cenas WebGL que já existem.</td><td>Médio; dá para pausar fora da viewport e entrar no Loading Gate.</td></tr>
+  </table>
+</main>
+</body>
+</html>

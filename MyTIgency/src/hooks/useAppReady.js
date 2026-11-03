@@ -10,7 +10,8 @@ const MAX_WAIT_MS = 9000
 // Mesmo carregando tudo instantaneamente, uma exibição mínima evita um
 // "pisca" da tela de loading — e cobre o raro caso de tudo resolver rápido
 // o bastante pra coincidir com o próprio burst de montagem síncrona.
-const MIN_DISPLAY_MS = 350
+// 700ms = um ciclo inteiro da varredura ░▒▓ do LoadingScreen.
+const MIN_DISPLAY_MS = 700
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 

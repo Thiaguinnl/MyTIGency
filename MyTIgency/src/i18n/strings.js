@@ -13,7 +13,7 @@ export const strings = {
       contact: 'Contato',
     },
     loading: {
-      label: 'carregando',
+      label: 'Carregando...',
       ariaLabel: 'Carregando o site',
     },
     hero: {
@@ -71,6 +71,19 @@ export const strings = {
       ctaPre: 'Vamos construir algo que ',
       ctaAccent: 'vence?',
       ctaButton: 'Fale conosco →',
+    },
+    tech: {
+      eyebrow: 'Tecnologias',
+      heading: 'As ferramentas por trás do que entregamos.',
+      sub: 'Só o que usamos de verdade, no dia a dia.',
+      tools: [
+        { name: 'Figma', desc: 'Você vê e aprova cada tela antes de uma linha de código.' },
+        { name: 'Illustrator', desc: 'Logos, ícones e ilustrações em vetor, nítidos em qualquer tamanho.' },
+        { name: 'After Effects', desc: 'Animações e vídeos do seu produto, quadro a quadro.' },
+        { name: 'Blender', desc: 'Onde modelamos do zero os objetos 3D do seu site.' },
+        { name: 'VS Code', desc: 'Onde escrevemos o código que você recebe no final.' },
+        { name: 'React', desc: 'A base do site: rápido de navegar e fácil de crescer depois.' },
+      ],
     },
     marquee: {
       phrases: [
@@ -181,7 +194,7 @@ export const strings = {
           sentence: 'Cada linha foi escrita e posicionada exatamente assim. Você não está lendo sobre o nosso trabalho. Você está vivenciando.',
           lines: [['Cada', '@ruler', 'linha'], ['foi escrita ', '@key'], ['@line', 'e posicionada'], ['exatamente assim.'], ['Você não está'],
             ['lendo'], ['sobre o ', '@ours', ' nosso'], ['trabalho.'], ['Você está'], ['vivenciando.']],
-          tags: { ours: '2 pessoas + café', hand: 'feito à mão', scale: 'escala', present: 'apresentar' },
+          tags: { ours: '2 pessoas + café', hand: 'feito à mão', scale: 'escala' },
         },
       },
       lines: [
@@ -294,7 +307,7 @@ export const strings = {
       contact: 'Contact',
     },
     loading: {
-      label: 'loading',
+      label: 'Loading...',
       ariaLabel: 'Loading the site',
     },
     hero: {
@@ -325,7 +338,7 @@ export const strings = {
       ],
     },
     pc: {
-      word: 'Work',
+      word: 'Our Work', // duas palavras: uma de cada lado do monitor
       caption: 'MyTigency ®',
       scroll: 'scroll to open ↓',
       end: 'end of manifesto',
@@ -351,6 +364,19 @@ export const strings = {
       ctaPre: "Let's build something that ",
       ctaAccent: 'wins?',
       ctaButton: 'Get in touch →',
+    },
+    tech: {
+      eyebrow: 'Technologies',
+      heading: 'The tools behind what we ship.',
+      sub: 'Only what we actually use, day to day.',
+      tools: [
+        { name: 'Figma', desc: 'You see and approve every screen before a single line of code.' },
+        { name: 'Illustrator', desc: 'Logos, icons and vector illustrations, sharp at any size.' },
+        { name: 'After Effects', desc: 'Motion and video for your product, frame by frame.' },
+        { name: 'Blender', desc: "Where we model your site's 3D objects from scratch." },
+        { name: 'VS Code', desc: 'Where we write the code you get at the end.' },
+        { name: 'React', desc: "The site's foundation: fast to browse, easy to grow later." },
+      ],
     },
     marquee: {
       phrases: [
@@ -432,7 +458,7 @@ export const strings = {
           sentence: "Every line was written and placed exactly like this. You're not reading about our work. You're living it.",
           lines: [['Every', '@ruler', 'line'], ['was written ', '@key'], ['@line', 'and placed'], ['exactly like this.'], ["You're not"],
             ['reading'], ['about ', '@ours', ' our'], ['work.'], ["You're"], ['living it.']],
-          tags: { ours: '2 people + coffee', hand: 'handmade', scale: 'scale', present: 'present' },
+          tags: { ours: '2 people + coffee', hand: 'handmade', scale: 'scale' },
         },
       },
       lines: [

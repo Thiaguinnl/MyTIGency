@@ -1,0 +1,33 @@
+import { launch, newPage, waitReady, sleep, state, wheel, instrument, BASE } from './lib.mjs'
+const browser = await launch()
+async function langAt(y0, label) {
+  const { page, log, ctx } = await newPage(browser)
+  await instrument(page)
+  await page.goto(BASE + '/'); await waitReady(page); await sleep(800)
+  await page.mouse.move(800, 450)
+  if (y0) { await page.evaluate((y) => window.scrollTo(0, y), y0); await sleep(300); await wheel(page, 40, 2); await sleep(2500) }
+  const before = await state(page)
+  await page.screenshot({ path: `lang-${y0}-a.png` })
+  await page.click('.menu-trigger'); await sleep(500)
+  const t0 = await page.evaluate(() => performance.now())
+  await page.evaluate(() => window.__recStart())
+  await page.click('.menu-lang button:nth-of-type(2)')
+  await sleep(3000)
+  const fr = await page.evaluate(() => window.__recStop())
+  const lt = await page.evaluate((t) => window.__ltSince(t), t0)
+  await page.keyboard.press('Escape'); await sleep(800)
+  const after = await state(page)
+  await page.screenshot({ path: `lang-${y0}-b.png` })
+  // segue rolando um pouco para ver se a cena continua coerente
+  await wheel(page, 300, 3); await sleep(1500)
+  const after2 = await state(page)
+  console.log(`\n=== EN em ${label}: antes ${before.y}/${before.label} → depois ${after.y}/${after.label} → +rolagem ${after2.y}/${after2.label}`)
+  console.log('  longtasks:', lt.map(([, d]) => d).join(',') || '-', ' quadros 3s:', JSON.stringify(fr))
+  const errs = log.filter((l) => !/X3595|partial deriv/.test(l)); if (errs.length) console.log('  console:', errs.slice(0, 6).join('\n  '))
+  await ctx.close()
+}
+await langAt(0, 'Hero')
+await langAt(6050, 'seção 3')
+await langAt(19550, 'seção 6')
+await langAt(24078, 'cartaz do PC')
+await browser.close()
